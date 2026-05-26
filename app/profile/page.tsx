@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { ProjectCard } from '@/components/ProjectCard'
-import { Loader2, User, Bookmark, Eye, Flag, Package, X, Check, Clock } from 'lucide-react'
+import { Loader2, User, Bookmark, Eye, Flag, Package, X, Check, Clock, Pencil, Camera } from 'lucide-react'
 import type { Project } from '@/types'
 import { PROJECT_CATEGORIES } from '@/types'
 
@@ -13,27 +13,31 @@ interface DeleteRequest { project_id: string; scheduled_at: string; reason: stri
 
 export default function ProfilePage() {
   const router = useRouter()
-  const [user,         setUser]         = useState<any>(null)
-  const [loading,      setLoading]      = useState(true)
-  const [tab,          setTab]          = useState<Tab>('submitted')
-  const [projects,     setProjects]     = useState<Project[]>([])
-  const [fetching,     setFetching]     = useState(false)
-  const [editProject,  setEditProject]  = useState<Project | null>(null)
-  const [deleteModal,  setDeleteModal]  = useState<Project | null>(null)
-  const [deleteReason, setDeleteReason] = useState('')
-  const [delRequests,  setDelRequests]  = useState<DeleteRequest[]>([])
-  const [saving,       setSaving]       = useState(false)
-  const [editForm, setEditForm] = useState({ name: '', description: '', website_url: '', github_url: '', twitter_url: '', discord_url: '', docs_url: '', category: '' })
-  const [builderProfile,     setBuilderProfile]     = useState<any>(null)
-  const [showBuilderForm,    setShowBuilderForm]     = useState(false)
-  const [builderForm,        setBuilderForm]         = useState({ bio: '', twitter_url: '', telegram_url: '', github_url: '', discord_url: '', website_url: '', other_links: '' })
-  const [savingBuilder,      setSavingBuilder]       = useState(false)
-  const [builderSaved,       setBuilderSaved]        = useState(false)
+  const [user,             setUser]             = useState<any>(null)
+  const [loading,          setLoading]          = useState(true)
+  const [tab,              setTab]              = useState<Tab>('submitted')
+  const [projects,         setProjects]         = useState<Project[]>([])
+  const [fetching,         setFetching]         = useState(false)
+  const [editProject,      setEditProject]      = useState<Project | null>(null)
+  const [deleteModal,      setDeleteModal]      = useState<Project | null>(null)
+  const [deleteReason,     setDeleteReason]     = useState('')
+  const [delRequests,      setDelRequests]      = useState<DeleteRequest[]>([])
+  const [saving,           setSaving]           = useState(false)
+  const [editingName,      setEditingName]      = useState(false)
+  const [displayName,      setDisplayName]      = useState('')
+  const [savingName,       setSavingName]       = useState(false)
+  const [editForm,         setEditForm]         = useState({ name: '', description: '', website_url: '', github_url: '', twitter_url: '', discord_url: '', docs_url: '', category: '' })
+  const [builderProfile,   setBuilderProfile]   = useState<any>(null)
+  const [showBuilderForm,  setShowBuilderForm]  = useState(false)
+  const [builderForm,      setBuilderForm]      = useState({ bio: '', twitter_url: '', telegram_url: '', github_url: '', discord_url: '', website_url: '', other_links: '', avatar_url: '' })
+  const [savingBuilder,    setSavingBuilder]    = useState(false)
+  const [builderSaved,     setBuilderSaved]     = useState(false)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!session) { router.push('/auth'); return }
       setUser(session.user)
+      setDisplayName(session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || '')
       setLoading(false)
     })
   }, [router])
@@ -47,7 +51,7 @@ export default function ProfilePage() {
 
   async function loadBuilderProfile() {
     if (!user) return
-    const res = await fetch(`/api/builder-profile?user_id=${user.id}`)
+    const res  = await fetch(`/api/builder-profile?user_id=${user.id}`)
     const data = await res.json()
     if (data.profile) {
       setBuilderProfile(data.profile)
@@ -59,6 +63,7 @@ export default function ProfilePage() {
         discord_url:  data.profile.discord_url  || '',
         website_url:  data.profile.website_url  || '',
         other_links:  data.profile.other_links  || '',
+        avatar_url:   data.profile.avatar_url   || '',
       })
     }
   }
@@ -78,6 +83,15 @@ export default function ProfilePage() {
     setShowBuilderForm(false)
     loadBuilderProfile()
     setTimeout(() => setBuilderSaved(false), 3000)
+  }
+
+  async function saveDisplayName() {
+    if (!user || !displayName.trim()) return
+    setSavingName(true)
+    await supabase.auth.updateUser({ data: { full_name: displayName.trim() } })
+    setSavingName(false)
+    setEditingName(false)
+    setUser((u: any) => ({ ...u, user_metadata: { ...u.user_metadata, full_name: displayName.trim() } }))
   }
 
   function loadDeleteRequests() {
@@ -129,13 +143,12 @@ export default function ProfilePage() {
     setSaving(true)
     await supabase.from('projects').update({
       ...editForm,
-      github_url:   editForm.github_url   || null,
-      twitter_url:  editForm.twitter_url  || null,
-      discord_url:  editForm.discord_url  || null,
-      docs_url:     editForm.docs_url     || null,
+      github_url:        editForm.github_url   || null,
+      twitter_url:       editForm.twitter_url  || null,
+      discord_url:       editForm.discord_url  || null,
+      docs_url:          editForm.docs_url     || null,
       evaluation_status: 'pending',
     }).eq('id', editProject.id).eq('created_by', user.id)
-    // Trigger re-evaluation after edit
     fetch('/api/re-evaluate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -164,7 +177,11 @@ export default function ProfilePage() {
     return `${h}h ${m}m`
   }
 
-  if (loading) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}><Loader2 size={24} style={{ animation: 'spin 1s linear infinite', color: 'var(--text-3)' }} /></div>
+  if (loading) return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+      <Loader2 size={24} style={{ animation: 'spin 1s linear infinite', color: 'var(--text-3)' }} />
+    </div>
+  )
 
   const TABS = [
     { key: 'submitted' as Tab, label: 'Submitted', icon: Package  },
@@ -173,34 +190,156 @@ export default function ProfilePage() {
     { key: 'reported'  as Tab, label: 'Reported',  icon: Flag     },
   ]
 
-  const inp: React.CSSProperties = { width: '100%', padding: '9px 12px', background: 'var(--bg-secondary)', border: '1px solid var(--border-hi)', borderRadius: 6, color: 'var(--text-1)', fontSize: 13, fontFamily: 'var(--font-sans)', outline: 'none' }
+  const inp: React.CSSProperties = { width: '100%', padding: '9px 12px', background: 'var(--bg-secondary)', border: '1px solid var(--border-hi)', borderRadius: 8, color: 'var(--text-1)', fontSize: 13, fontFamily: 'var(--font-sans)', outline: 'none' }
+
+  const currentName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User'
+  const avatarUrl   = user?.user_metadata?.avatar_url
 
   return (
-    <div style={{ maxWidth: 1100, margin: '0 auto', padding: '40px 32px' }}>
+    <div style={{ maxWidth: 1100, margin: '0 auto', padding: '40px 28px' }}>
 
-      {/* Profile header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 36, paddingBottom: 24, borderBottom: '1px solid var(--border-hi)' }}>
-        <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'var(--bg-secondary)', border: '1px solid var(--border-hi)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
-          {user?.user_metadata?.avatar_url ? <img src={user.user_metadata.avatar_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { (e.target as HTMLImageElement).style.display='none' }} /> : <User size={22} color="var(--text-3)" />}
+      {/* ── PROFILE HEADER ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 36, paddingBottom: 28, borderBottom: '1px solid var(--border)' }}>
+        {/* Avatar */}
+        <div style={{ position: 'relative', flexShrink: 0 }}>
+          <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'var(--bg-secondary)', border: '2px solid var(--border-hi)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+            {avatarUrl
+              ? <img src={avatarUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+              : <User size={26} color="var(--text-3)" />
+            }
+          </div>
         </div>
-        <div>
-          <h1 style={{ fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 19, color: 'var(--text-1)', marginBottom: 3 }}>
-            {user?.user_metadata?.full_name || user?.email?.split('@')[0]}
-          </h1>
-          <p style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-3)' }}>{user?.email}</p>
+
+        {/* Name + email */}
+        <div style={{ flex: 1 }}>
+          {editingName ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <input
+                value={displayName}
+                onChange={e => setDisplayName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') saveDisplayName(); if (e.key === 'Escape') setEditingName(false) }}
+                autoFocus
+                style={{ ...inp, width: 220, height: 36, fontWeight: 700, fontSize: 17 }}
+              />
+              <button onClick={saveDisplayName} disabled={savingName} style={{ padding: '6px 12px', background: 'var(--brand)', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                {savingName ? <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} /> : <Check size={11} />} Save
+              </button>
+              <button onClick={() => { setEditingName(false); setDisplayName(currentName) }} style={{ padding: '6px 10px', background: 'transparent', border: '1px solid var(--border-hi)', borderRadius: 8, cursor: 'pointer', color: 'var(--text-2)', fontSize: 12 }}>
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <h1 style={{ fontWeight: 700, fontSize: 19, color: 'var(--text-1)', margin: 0 }}>{currentName}</h1>
+              <button onClick={() => setEditingName(true)} title="Edit display name" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', display: 'flex', padding: 4, borderRadius: 6 }}>
+                <Pencil size={13} />
+              </button>
+            </div>
+          )}
+          <p style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-3)', margin: 0 }}>{user?.email}</p>
         </div>
+
+        {/* Builder Profile button — top right of header */}
+        <button onClick={() => setShowBuilderForm(!showBuilderForm)} style={{
+          padding: '9px 16px', borderRadius: 9,
+          border: '1px solid var(--border-hi)',
+          background: showBuilderForm ? 'var(--brand)' : 'var(--bg-secondary)',
+          color: showBuilderForm ? '#fff' : 'var(--text-1)',
+          cursor: 'pointer', fontSize: 13, fontWeight: 600,
+          fontFamily: 'var(--font-sans)', flexShrink: 0,
+        }}>
+          {builderProfile
+            ? (showBuilderForm ? '✕ Cancel' : '✎ Builder Profile')
+            : (showBuilderForm ? '✕ Cancel' : '+ Builder Profile')
+          }
+          {builderSaved && <span style={{ marginLeft: 8, color: '#22C55E', fontSize: 12 }}>✓</span>}
+        </button>
       </div>
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', borderBottom: '1px solid var(--border-hi)', marginBottom: 28 }}>
+      {/* ── BUILDER PROFILE FORM (inline, shown when toggled) ── */}
+      {showBuilderForm && (
+        <div style={{ marginBottom: 28, padding: '24px', background: 'var(--bg-secondary)', borderRadius: 14, border: '1px solid var(--border)' }}>
+          <h3 style={{ fontWeight: 700, fontSize: 15, color: 'var(--text-1)', margin: '0 0 4px' }}>Builder Profile</h3>
+          <p style={{ fontSize: 12, color: 'var(--text-3)', margin: '0 0 20px' }}>Visible on your project pages under the Builder Profile tab</p>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            {/* Avatar URL field */}
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-3)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 5 }}>
+                <Camera size={10} /> Profile Picture URL
+              </label>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                <div style={{ width: 48, height: 48, borderRadius: '50%', overflow: 'hidden', background: 'var(--bg-tertiary)', border: '1px solid var(--border-hi)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {builderForm.avatar_url
+                    ? <img src={builderForm.avatar_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                    : <User size={18} color="var(--text-3)" />
+                  }
+                </div>
+                <input type="text" value={builderForm.avatar_url}
+                  onChange={e => setBuilderForm(f => ({ ...f, avatar_url: e.target.value }))}
+                  placeholder="https://example.com/your-photo.jpg"
+                  style={{ ...inp }} />
+              </div>
+            </div>
+
+            {/* Bio */}
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-3)', marginBottom: 6, display: 'block' }}>Bio</label>
+              <textarea value={builderForm.bio} onChange={e => setBuilderForm(f => ({ ...f, bio: e.target.value }))}
+                placeholder="Tell the community about yourself..." rows={3}
+                style={{ ...inp, resize: 'vertical', boxSizing: 'border-box' }} />
+            </div>
+
+            {/* Social fields in 2 columns */}
+            {[
+              { key: 'twitter_url',  label: 'X / Twitter',  placeholder: 'https://x.com/yourhandle' },
+              { key: 'github_url',   label: 'GitHub',       placeholder: 'https://github.com/yourname' },
+              { key: 'telegram_url', label: 'Telegram',     placeholder: 'https://t.me/yourhandle' },
+              { key: 'discord_url',  label: 'Discord',      placeholder: 'https://discord.gg/yourserver' },
+              { key: 'website_url',  label: 'Website',      placeholder: 'https://yourwebsite.com' },
+              { key: 'other_links',  label: 'Other Details', placeholder: 'Any other info or links...' },
+            ].map(({ key, label, placeholder }) => (
+              <div key={key}>
+                <label style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-3)', marginBottom: 6, display: 'block' }}>{label}</label>
+                <input type="text" value={(builderForm as any)[key]}
+                  onChange={e => setBuilderForm(f => ({ ...f, [key]: e.target.value }))}
+                  placeholder={placeholder} style={inp} />
+              </div>
+            ))}
+          </div>
+
+          <button onClick={saveBuilderProfile} disabled={savingBuilder} style={{
+            marginTop: 18, width: '100%', padding: '11px', background: 'var(--brand)',
+            color: '#fff', border: 'none', borderRadius: 9, cursor: savingBuilder ? 'not-allowed' : 'pointer',
+            fontSize: 13, fontWeight: 700, fontFamily: 'var(--font-sans)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            opacity: savingBuilder ? 0.7 : 1,
+          }}>
+            {savingBuilder ? <><Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> Saving...</> : 'Save Builder Profile'}
+          </button>
+        </div>
+      )}
+
+      {/* ── TABS ── */}
+      <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 28 }}>
         {TABS.map(({ key, label, icon: Icon }) => (
-          <button key={key} onClick={() => setTab(key)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px', border: 'none', cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase', background: 'transparent', color: tab === key ? 'var(--text-1)' : 'var(--text-3)', borderBottom: tab === key ? '2px solid var(--text-1)' : '2px solid transparent', fontWeight: tab === key ? 600 : 400 }}>
+          <button key={key} onClick={() => setTab(key)} style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '10px 20px', border: 'none', cursor: 'pointer',
+            fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '0.06em',
+            textTransform: 'uppercase', background: 'transparent',
+            color: tab === key ? 'var(--text-1)' : 'var(--text-3)',
+            borderBottom: tab === key ? '2px solid var(--brand)' : '2px solid transparent',
+            marginBottom: -1, fontWeight: tab === key ? 600 : 400,
+          }}>
             <Icon size={13} /> {label}
           </button>
         ))}
       </div>
 
-      {/* Pending deletions banner */}
+      {/* ── PENDING DELETIONS ── */}
       {delRequests.length > 0 && tab === 'submitted' && (
         <div style={{ marginBottom: 20, padding: '12px 16px', borderRadius: 8, background: 'var(--red-bg)', border: '1px solid var(--red-bd)' }}>
           {delRequests.map(req => {
@@ -212,14 +351,8 @@ export default function ProfilePage() {
                   <span><strong>{req.name}</strong> — {cd ? `Deleting in ${cd}` : 'Ready to delete'}</span>
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  {!cd && (
-                    <button onClick={() => confirmDelete(req.project_id)} style={{ padding: '4px 12px', background: 'var(--red)', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
-                      Confirm Delete
-                    </button>
-                  )}
-                  <button onClick={() => cancelDelete(req.project_id)} style={{ padding: '4px 12px', background: 'transparent', color: 'var(--text-2)', border: '1px solid var(--border-hi)', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>
-                    Cancel
-                  </button>
+                  {!cd && <button onClick={() => confirmDelete(req.project_id)} style={{ padding: '4px 12px', background: 'var(--red)', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Confirm Delete</button>}
+                  <button onClick={() => cancelDelete(req.project_id)} style={{ padding: '4px 12px', background: 'transparent', color: 'var(--text-2)', border: '1px solid var(--border-hi)', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}>Cancel</button>
                 </div>
               </div>
             )
@@ -227,94 +360,13 @@ export default function ProfilePage() {
         </div>
       )}
 
-      {/* ── Builder Profile Section ── */}
-      <div style={{ marginBottom: 24, padding: '20px', background: 'var(--bg-secondary)', borderRadius: 14, border: '1px solid var(--border)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: builderProfile || showBuilderForm ? 16 : 0, flexWrap: 'wrap', gap: 8 }}>
-          <div>
-            <h3 style={{ fontWeight: 700, fontSize: 15, color: 'var(--text-1)', margin: 0, marginBottom: 2 }}>Builder Profile</h3>
-            <p style={{ fontSize: 12, color: 'var(--text-3)', margin: 0 }}>Visible on your project pages under the Builder Profile tab</p>
-          </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            {builderSaved && <span style={{ fontSize: 12, color: 'var(--green)', fontFamily: 'var(--font-mono)' }}>✓ Saved</span>}
-            {projects.length === 0 && !builderProfile ? (
-              <span style={{ fontSize: 12, color: 'var(--text-3)', fontFamily: 'var(--font-mono)', fontStyle: 'italic' }}>Submit a project first</span>
-            ) : (
-              <button onClick={() => setShowBuilderForm(!showBuilderForm)} style={{
-                padding: '7px 14px', borderRadius: 8, border: '1px solid var(--border-hi)',
-                background: showBuilderForm ? 'var(--brand)' : 'transparent',
-                color: showBuilderForm ? '#fff' : 'var(--text-1)',
-                cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: 'var(--font-sans)',
-              }}>
-                {builderProfile ? (showBuilderForm ? 'Cancel' : 'Edit Profile') : (showBuilderForm ? 'Cancel' : 'Create Builder Profile')}
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Builder profile form */}
-        {showBuilderForm && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {[
-              { key: 'bio',          label: 'Bio',          placeholder: 'Tell the community about yourself...', multi: true },
-              { key: 'twitter_url',  label: 'X / Twitter',  placeholder: 'https://x.com/yourhandle' },
-              { key: 'telegram_url', label: 'Telegram',     placeholder: 'https://t.me/yourhandle' },
-              { key: 'github_url',   label: 'GitHub',       placeholder: 'https://github.com/yourname' },
-              { key: 'discord_url',  label: 'Discord',      placeholder: 'https://discord.gg/yourserver' },
-              { key: 'website_url',  label: 'Website',      placeholder: 'https://yourwebsite.com' },
-              { key: 'other_links',  label: 'Other Details', placeholder: 'Any other info or links...' },
-            ].map(({ key, label, placeholder, multi }) => (
-              <div key={key}>
-                <label style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-3)', marginBottom: 5, display: 'block' }}>{label}</label>
-                {multi ? (
-                  <textarea
-                    value={(builderForm as any)[key]}
-                    onChange={e => setBuilderForm(f => ({ ...f, [key]: e.target.value }))}
-                    placeholder={placeholder} rows={3}
-                    style={{ width: '100%', padding: '9px 12px', background: 'var(--bg-card)', border: '1.5px solid var(--border-hi)', borderRadius: 8, color: 'var(--text-1)', fontSize: 13, outline: 'none', resize: 'vertical', fontFamily: 'var(--font-sans)', boxSizing: 'border-box' }}
-                  />
-                ) : (
-                  <input
-                    type="text"
-                    value={(builderForm as any)[key]}
-                    onChange={e => setBuilderForm(f => ({ ...f, [key]: e.target.value }))}
-                    placeholder={placeholder}
-                    style={{ width: '100%', height: 40, padding: '0 12px', background: 'var(--bg-card)', border: '1.5px solid var(--border-hi)', borderRadius: 8, color: 'var(--text-1)', fontSize: 13, outline: 'none', fontFamily: 'var(--font-sans)', boxSizing: 'border-box' }}
-                  />
-                )}
-              </div>
-            ))}
-            <button onClick={saveBuilderProfile} disabled={savingBuilder} style={{
-              padding: '10px', background: 'var(--brand)', color: '#fff', border: 'none',
-              borderRadius: 8, cursor: savingBuilder ? 'not-allowed' : 'pointer',
-              fontSize: 13, fontWeight: 700, fontFamily: 'var(--font-sans)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-              opacity: savingBuilder ? 0.7 : 1,
-            }}>
-              {savingBuilder ? <><Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> Saving...</> : 'Save Builder Profile'}
-            </button>
-          </div>
-        )}
-
-        {/* Show existing profile summary */}
-        {builderProfile && !showBuilderForm && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {builderProfile.bio && <p style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.7 }}>{builderProfile.bio}</p>}
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-              {builderProfile.twitter_url  && <span style={{ fontSize: 12, color: 'var(--text-3)' }}>✓ Twitter</span>}
-              {builderProfile.github_url   && <span style={{ fontSize: 12, color: 'var(--text-3)' }}>✓ GitHub</span>}
-              {builderProfile.telegram_url && <span style={{ fontSize: 12, color: 'var(--text-3)' }}>✓ Telegram</span>}
-              {builderProfile.discord_url  && <span style={{ fontSize: 12, color: 'var(--text-3)' }}>✓ Discord</span>}
-              {builderProfile.website_url  && <span style={{ fontSize: 12, color: 'var(--text-3)' }}>✓ Website</span>}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Project grid */}
+      {/* ── PROJECTS GRID ── */}
       {fetching ? (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '60px 0' }}><Loader2 size={20} style={{ animation: 'spin 1s linear infinite', color: 'var(--text-3)' }} /></div>
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '60px 0' }}>
+          <Loader2 size={20} style={{ animation: 'spin 1s linear infinite', color: 'var(--text-3)' }} />
+        </div>
       ) : projects.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '60px 0', border: '1px solid var(--border-hi)', borderRadius: 8 }}>
+        <div style={{ textAlign: 'center', padding: '60px 0', border: '1px solid var(--border)', borderRadius: 10 }}>
           <p style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>No {tab} projects yet</p>
         </div>
       ) : (
@@ -323,14 +375,9 @@ export default function ProfilePage() {
             const del = delRequests.find(r => r.project_id === p.id)
             return (
               <div key={p.id} style={{ position: 'relative', opacity: del ? 0.6 : 1 }}>
-                <ProjectCard
-                  project={p}
-                  showEditControls={tab === 'submitted'}
-                  onEdit={openEdit}
-                  onDelete={p => setDeleteModal(p)}
-                />
+                <ProjectCard project={p} showEditControls={tab === 'submitted'} onEdit={openEdit} onDelete={p => setDeleteModal(p)} />
                 {del && (
-                  <div style={{ position: 'absolute', inset: 0, borderRadius: 10, background: 'rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+                  <div style={{ position: 'absolute', inset: 0, borderRadius: 16, background: 'rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
                     <div style={{ background: 'var(--bg-card)', border: '1px solid var(--red-bd)', borderRadius: 8, padding: '10px 16px', textAlign: 'center' }}>
                       <Clock size={14} color="var(--red)" style={{ marginBottom: 4 }} />
                       <p style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--red)', fontWeight: 600 }}>
@@ -345,12 +392,12 @@ export default function ProfilePage() {
         </div>
       )}
 
-      {/* Edit Modal */}
+      {/* ── EDIT MODAL ── */}
       {editProject && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-hi)', borderRadius: 12, padding: '28px', width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto' }}>
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-hi)', borderRadius: 14, padding: '28px', width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h2 style={{ fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 17, color: 'var(--text-1)' }}>Edit Project</h2>
+              <h2 style={{ fontWeight: 700, fontSize: 17, color: 'var(--text-1)', margin: 0 }}>Edit Project</h2>
               <button onClick={() => setEditProject(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-2)' }}><X size={18} /></button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 13 }}>
@@ -372,30 +419,30 @@ export default function ProfilePage() {
               </div>
             </div>
             <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
-              <button onClick={() => setEditProject(null)} style={{ flex: 1, padding: '10px', border: '1px solid var(--border-hi)', background: 'transparent', color: 'var(--text-2)', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>Cancel</button>
-              <button onClick={handleSaveEdit} disabled={saving} style={{ flex: 1, padding: '10px', background: 'var(--text-1)', color: 'var(--bg)', border: 'none', borderRadius: 6, cursor: saving ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                {saving ? <><Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> Saving...</> : <><Check size={13} /> Save Changes</>}
+              <button onClick={() => setEditProject(null)} style={{ flex: 1, padding: '10px', border: '1px solid var(--border-hi)', background: 'transparent', color: 'var(--text-2)', borderRadius: 8, cursor: 'pointer', fontSize: 13 }}>Cancel</button>
+              <button onClick={handleSaveEdit} disabled={saving} style={{ flex: 1, padding: '10px', background: 'var(--brand)', color: '#fff', border: 'none', borderRadius: 8, cursor: saving ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                {saving ? <><Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> Saving...</> : <><Check size={13} /> Save & Re-evaluate</>}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Delete Modal */}
+      {/* ── DELETE MODAL ── */}
       {deleteModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-hi)', borderRadius: 12, padding: '28px', width: '100%', maxWidth: 420 }}>
-            <h2 style={{ fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 17, color: 'var(--red)', marginBottom: 8 }}>Schedule Deletion</h2>
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-hi)', borderRadius: 14, padding: '28px', width: '100%', maxWidth: 420 }}>
+            <h2 style={{ fontWeight: 700, fontSize: 17, color: 'var(--red)', marginBottom: 8 }}>Schedule Deletion</h2>
             <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 16, lineHeight: 1.6 }}>
-              <strong>{deleteModal.name}</strong> will be permanently deleted after <strong>24 hours</strong>. You can cancel anytime during this period.
+              <strong>{deleteModal.name}</strong> will be permanently deleted after <strong>24 hours</strong>. You can cancel anytime.
             </p>
             <div style={{ marginBottom: 16 }}>
               <label style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-3)', marginBottom: 6, display: 'block' }}>Reason *</label>
-              <textarea value={deleteReason} onChange={e => setDeleteReason(e.target.value)} placeholder="Why are you deleting this project?" rows={3} style={{ width: '100%', padding: '9px 12px', background: 'var(--bg-secondary)', border: '1px solid var(--border-hi)', borderRadius: 6, color: 'var(--text-1)', fontSize: 13, outline: 'none', resize: 'none', fontFamily: 'var(--font-sans)' }} />
+              <textarea value={deleteReason} onChange={e => setDeleteReason(e.target.value)} placeholder="Why are you deleting this project?" rows={3} style={{ ...inp, resize: 'none' }} />
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={() => { setDeleteModal(null); setDeleteReason('') }} style={{ flex: 1, padding: '10px', border: '1px solid var(--border-hi)', background: 'transparent', color: 'var(--text-2)', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>Cancel</button>
-              <button onClick={() => scheduleDelete(deleteModal)} disabled={!deleteReason.trim()} style={{ flex: 1, padding: '10px', background: 'var(--red)', color: '#fff', border: 'none', borderRadius: 6, cursor: !deleteReason.trim() ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 600, opacity: !deleteReason.trim() ? 0.6 : 1 }}>
+              <button onClick={() => { setDeleteModal(null); setDeleteReason('') }} style={{ flex: 1, padding: '10px', border: '1px solid var(--border-hi)', background: 'transparent', color: 'var(--text-2)', borderRadius: 8, cursor: 'pointer', fontSize: 13 }}>Cancel</button>
+              <button onClick={() => scheduleDelete(deleteModal)} disabled={!deleteReason.trim()} style={{ flex: 1, padding: '10px', background: 'var(--red)', color: '#fff', border: 'none', borderRadius: 8, cursor: !deleteReason.trim() ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 600, opacity: !deleteReason.trim() ? 0.6 : 1 }}>
                 Schedule Deletion
               </button>
             </div>

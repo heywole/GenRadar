@@ -73,21 +73,27 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text-1
 
 /* ── Theme-aware hero and CTA sections ── */
 .hero-section {
+  /* Light mode: warm cream gradient */
   background: linear-gradient(135deg, #FEF9F0 0%, #FAF0D8 50%, #F0E3BE 100%);
 }
 .dark .hero-section {
+  /* Dark mode: dark warm brown gradient */
   background: linear-gradient(135deg, #211C14 0%, #2A2318 50%, #352C1E 100%);
 }
 .cta-section {
-  background: linear-gradient(135deg, #1A1208 0%, #2C1E0A 100%);
+  /* Light mode CTA: warm cream — matches site background */
+  background: linear-gradient(135deg, #FEF9F0 0%, #F5ECDB 100%);
+  border: 1px solid rgba(0,0,0,0.07);
 }
 .dark .cta-section {
-  background: linear-gradient(135deg, #F5ECD8 0%, #EDE0CA 100%);
+  /* Dark mode CTA: dark warm */
+  background: linear-gradient(135deg, #211C14 0%, #2A2318 100%);
+  border: 1px solid rgba(255,255,255,0.06);
 }
-.cta-section .cta-title { color: #FEF9F0; }
-.dark .cta-section .cta-title { color: #1A1208; }
-.cta-section .cta-sub { color: rgba(254,249,240,0.65); }
-.dark .cta-section .cta-sub { color: rgba(26,18,8,0.65); }
+.cta-section .cta-title { color: #1A1208; }
+.dark .cta-section .cta-title { color: #F5ECD8; }
+.cta-section .cta-sub { color: rgba(26,18,8,0.6); }
+.dark .cta-section .cta-sub { color: rgba(245,236,216,0.6); }
 .cta-section .cta-btn { background: var(--brand); color: #fff; }
 .dark .cta-section .cta-btn { background: var(--brand); color: #fff; }
 

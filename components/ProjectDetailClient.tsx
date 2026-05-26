@@ -11,16 +11,21 @@ export function ProjectDetailClient({ projectId, initialViews, initialSaves }: P
   const [saves, setSaves] = useState(initialSaves)
 
   useEffect(() => {
-    // Record a view
+    // Record a view only once per browser session to avoid inflation
     async function recordView() {
+      const key = `viewed_${projectId}`
+      if (sessionStorage.getItem(key)) return
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) return
-      await fetch('/api/interact', {
+      const res = await fetch('/api/interact', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify({ project_id: projectId, type: 'view' }),
       })
-      setViews(v => v + 1)
+      if (res.ok) {
+        sessionStorage.setItem(key, '1')
+        setViews(v => v + 1)
+      }
     }
     recordView()
   }, [projectId])

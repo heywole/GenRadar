@@ -156,35 +156,12 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── STATS ── */}
-      <section className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: 36 }}>
-        {[
-          { icon: Upload, value: loading ? '—' : String(totalCount),  label: 'Projects',    sub: 'Live on GenScout'      },
-          { icon: Cpu,    value: loading ? '—' : String(scoredCount), label: 'Evaluations', sub: 'AI consensus scored'   },
-          { icon: Shield, value: 'Active',                             label: 'AI Consensus', sub: 'GenLayer network live', green: true },
-        ].map(({ icon: Icon, value, label, sub, green }) => (
-          <div key={label} style={{ padding: '18px 20px', background: 'var(--bg-secondary)', borderRadius: 14, display: 'flex', gap: 14, alignItems: 'center' }}>
-            <div style={{ width: 40, height: 40, borderRadius: 10, background: green ? 'var(--brand-bg)' : 'var(--bg-tertiary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <Icon size={18} color={green ? 'var(--brand)' : 'var(--text-3)'} />
-            </div>
-            <div>
-              <div style={{ fontWeight: 900, fontSize: 26, letterSpacing: '-0.04em', color: green ? 'var(--brand)' : 'var(--text-1)', lineHeight: 1, marginBottom: 2 }}>{value}</div>
-              <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--text-1)', marginBottom: 1 }}>{label}</div>
-              <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{sub}</div>
-            </div>
-          </div>
-        ))}
-      </section>
-
       {/* ── TRENDING ── */}
       <section style={{ marginBottom: 40 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 20 }}>🔥</span>
-            <div>
-              <h2 style={{ fontWeight: 800, fontSize: 18, letterSpacing: '-0.02em', color: 'var(--text-1)', margin: 0 }}>Trending Projects</h2>
-              <p style={{ fontSize: 12, color: 'var(--text-3)', margin: 0 }}>Most viewed — live data</p>
-            </div>
+          <div>
+            <h2 style={{ fontWeight: 800, fontSize: 18, letterSpacing: '-0.02em', color: 'var(--text-1)', margin: 0 }}>Trending Projects</h2>
+            <p style={{ fontSize: 12, color: 'var(--text-3)', margin: 0 }}>Most viewed — live data</p>
           </div>
           <Link href="/explore" style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 600, color: 'var(--brand)', textDecoration: 'none' }}>
             View all <ArrowRight size={13} />
@@ -214,13 +191,13 @@ export default function HomePage() {
             { n: '3', icon: Cpu,    title: 'GenLayer AI Evaluation',  c: '#7C3AED', bg: 'rgba(124,58,237,0.1)', desc: 'GenLayer consensus evaluates across multiple dimensions.' },
             { n: '4', icon: Users,  title: 'Community Feedback',      c: '#22C55E', bg: 'rgba(34,197,94,0.1)',  desc: 'Community reviews improve trust over time.' },
           ].map(({ n, icon: Icon, title, c, bg, desc }) => (
-            <div key={n} style={{ padding: '18px', background: 'var(--bg-secondary)', borderRadius: 14 }}>
-              <div style={{ width: 28, height: 28, borderRadius: '50%', background: bg, border: `1.5px solid ${c}`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
-                <span style={{ fontWeight: 800, fontSize: 12, color: c }}>{n}</span>
+            <div key={n} style={{ padding: '22px 16px', background: 'var(--bg-secondary)', borderRadius: 14, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <div style={{ width: 36, height: 36, borderRadius: '50%', background: bg, border: `2px solid ${c}`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+                <span style={{ fontWeight: 800, fontSize: 15, color: c }}>{n}</span>
               </div>
-              <Icon size={19} color={c} style={{ marginBottom: 8, display: 'block' }} />
-              <div style={{ fontWeight: 700, fontSize: 12, color: 'var(--text-1)', marginBottom: 5 }}>{title}</div>
-              <div style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.65 }}>{desc}</div>
+              <Icon size={24} color={c} style={{ marginBottom: 12, display: 'block' }} />
+              <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-1)', marginBottom: 8 }}>{title}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.65 }}>{desc}</div>
             </div>
           ))}
         </div>
