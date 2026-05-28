@@ -1,0 +1,148 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg:           #FDF6EC;
+  --bg-card:      #FFF9F2;
+  --bg-secondary: #F5ECDB;
+  --bg-tertiary:  #EDE0CA;
+  --border:       rgba(0,0,0,0.07);
+  --border-hi:    rgba(0,0,0,0.13);
+  --text-1:       #1A1208;
+  --text-2:       #4A3C28;
+  --text-3:       #9A8A70;
+
+  --brand:        #E8630A;
+  --brand-dark:   #C4510A;
+  --brand-bg:     rgba(232,99,10,0.08);
+  --brand-bd:     rgba(232,99,10,0.22);
+
+  --green:        #16A34A;
+  --green-bg:     rgba(22,163,74,0.08);
+  --green-bd:     rgba(22,163,74,0.22);
+  --yellow:       #CA8A04;
+  --yellow-bg:    rgba(202,138,4,0.08);
+  --yellow-bd:    rgba(202,138,4,0.22);
+  --red:          #DC2626;
+  --red-bg:       rgba(220,38,38,0.08);
+  --red-bd:       rgba(220,38,38,0.22);
+  --blue:         #2563EB;
+  --blue-bg:      rgba(37,99,235,0.08);
+  --blue-bd:      rgba(37,99,235,0.22);
+
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+}
+
+.dark {
+  --bg:           #18140E;
+  --bg-card:      #211C14;
+  --bg-secondary: #2A2318;
+  --bg-tertiary:  #352C1E;
+  --border:       rgba(255,255,255,0.06);
+  --border-hi:    rgba(255,255,255,0.11);
+  --text-1:       #F5ECD8;
+  --text-2:       #A8977E;
+  --text-3:       #6A5A42;
+
+  --brand:        #F07830;
+  --brand-dark:   #E8630A;
+  --brand-bg:     rgba(240,120,48,0.10);
+  --brand-bd:     rgba(240,120,48,0.25);
+
+  --green:        #22C55E;
+  --green-bg:     rgba(34,197,94,0.08);
+  --green-bd:     rgba(34,197,94,0.20);
+  --yellow:       #EAB308;
+  --yellow-bg:    rgba(234,179,8,0.08);
+  --yellow-bd:    rgba(234,179,8,0.20);
+  --red:          #EF4444;
+  --red-bg:       rgba(239,68,68,0.08);
+  --red-bd:       rgba(239,68,68,0.20);
+  --blue:         #3B82F6;
+  --blue-bg:      rgba(59,130,246,0.08);
+  --blue-bd:      rgba(59,130,246,0.20);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body { font-family: var(--font-sans); background: var(--bg); color: var(--text-1); -webkit-font-smoothing: antialiased; }
+
+/* ── Theme-aware hero and CTA sections ── */
+.hero-section {
+  /* Light mode: warm cream gradient */
+  background: linear-gradient(135deg, #FEF9F0 0%, #FAF0D8 50%, #F0E3BE 100%);
+}
+.dark .hero-section {
+  /* Dark mode: dark warm brown gradient */
+  background: linear-gradient(135deg, #211C14 0%, #2A2318 50%, #352C1E 100%);
+}
+.cta-section {
+  /* Light mode CTA: warm cream — matches site background */
+  background: linear-gradient(135deg, #FEF9F0 0%, #F5ECDB 100%);
+  border: 1px solid rgba(0,0,0,0.07);
+}
+.dark .cta-section {
+  /* Dark mode CTA: dark warm */
+  background: linear-gradient(135deg, #211C14 0%, #2A2318 100%);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.cta-section .cta-title { color: #1A1208; }
+.dark .cta-section .cta-title { color: #F5ECD8; }
+.cta-section .cta-sub { color: rgba(26,18,8,0.6); }
+.dark .cta-section .cta-sub { color: rgba(245,236,216,0.6); }
+.cta-section .cta-btn { background: var(--brand); color: #fff; }
+.dark .cta-section .cta-btn { background: var(--brand); color: #fff; }
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 2px; }
+
+/* ── Animations ── */
+@keyframes spin    { to { transform: rotate(360deg); } }
+@keyframes pulse   { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+@keyframes slideIn { from { opacity:0; transform:translateX(-6px); } to { opacity:1; transform:translateX(0); } }
+@keyframes fadeUp  { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+
+/* ── Mobile responsive ── */
+@media (max-width: 768px) {
+  /* Layout */
+  .sidebar-desktop { display: none !important; }
+  .main-content    { margin-left: 0 !important; }
+
+  /* Homepage hero */
+  .hero-grid       { grid-template-columns: 1fr !important; }
+  .hero-pills      { display: none !important; }
+
+  /* Stats */
+  .stats-grid      { grid-template-columns: 1fr 1fr !important; }
+
+  /* Project grid */
+  .proj-grid-home  { grid-template-columns: 1fr !important; }
+
+  /* How it works */
+  .how-grid        { grid-template-columns: 1fr 1fr !important; }
+
+  /* Why + AI section */
+  .why-ai-grid     { grid-template-columns: 1fr !important; }
+
+  /* Explore */
+  .explore-controls { flex-wrap: wrap !important; }
+
+  /* Project detail */
+  .proj-detail-grid { grid-template-columns: 1fr !important; }
+  .proj-detail-sidebar { position: static !important; }
+}
+
+@media (max-width: 480px) {
+  .stats-grid   { grid-template-columns: 1fr !important; }
+  .how-grid     { grid-template-columns: 1fr !important; }
+}
+
+/* ── details/summary dropdown styling ── */
+details summary::-webkit-details-marker { display: none; }
+details[open] summary svg:last-child { transform: rotate(180deg); }
