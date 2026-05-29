@@ -138,20 +138,31 @@ export default function ProfilePage() {
     if (!user) return
     setFetching(true); setProjects([])
     try {
+      // Always fetch via API to get real counts (views, saves, votes)
+      const res = await fetch('/api/projects?sort=newest&limit=100&t=' + Date.now())
+      const d = await res.json()
+      const all: Project[] = d.projects || []
+
       if (t === 'submitted') {
+        // Fetch submitted projects directly from supabase (API doesn't expose created_by)
         const { data } = await supabase
           .from('projects')
-          .select('*, ai_scores(score,risk,confidence,positives,risks)')
+          .select('id')
           .eq('created_by', user.id)
           .order('created_at', { ascending: false })
-        setProjects(shape(data || []))
+        const submittedIds = new Set((data || []).map((p: any) => p.id))
+        const filtered = all.filter((p: any) => submittedIds.has(p.id))
+        setProjects(filtered)
       } else {
         const map: Record<Tab, string> = { saved: 'save', viewed: 'view', reported: 'report', submitted: '' }
-        const { data: ints } = await supabase.from('interactions').select('project_id').eq('user_id', user.id).eq('type', map[t])
-        const ids = (ints || []).map((i: any) => i.project_id)
-        if (!ids.length) { setFetching(false); return }
-        const { data } = await supabase.from('projects').select('*, ai_scores(score,risk,confidence,positives,risks)').in('id', ids)
-        setProjects(shape(data || []))
+        const { data: ints } = await supabase
+          .from('interactions')
+          .select('project_id')
+          .eq('user_id', user.id)
+          .eq('type', map[t])
+        const ids = new Set((ints || []).map((i: any) => i.project_id))
+        if (!ids.size) { setFetching(false); return }
+        setProjects(all.filter((p: any) => ids.has(p.id)))
       }
     } catch (e) { console.error(e) }
     setFetching(false)
