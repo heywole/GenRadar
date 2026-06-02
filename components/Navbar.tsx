@@ -55,7 +55,7 @@ export function Navbar({ session: initialSession }: Props) {
           // Use SVG logos — switch between dark and light version
           <img
             src={isDark ? '/logo-dark.svg' : '/logo-light.svg'}
-            alt="GenVerse"
+            alt="GenRadar"
             style={{ height: 44, width: 'auto', objectFit: 'contain', display: 'block' }}
             onError={e => {
               // fallback: try png, then hide
@@ -72,7 +72,7 @@ export function Navbar({ session: initialSession }: Props) {
           <div style={{ height: 44, width: 44 }} />
         )}
         <span style={{ fontWeight: 900, fontSize: 21, letterSpacing: '-0.04em', color: 'var(--text-1)' }}>
-          GenVerse
+          GenRadar
         </span>
       </Link>
 
