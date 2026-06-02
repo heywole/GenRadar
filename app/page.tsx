@@ -249,7 +249,7 @@ export default function HomePage() {
             <span style={{ color: 'var(--brand)' }}>GenLayer</span>
           </h1>
           <p style={{ fontSize: 14, color: 'var(--text-2)', lineHeight: 1.78, maxWidth: 380, marginBottom: 28 }}>
-            GenRadar combines AI-powered evaluation, backend security scanning, and community validation to help you discover and trust the best Web3 projects.
+            GenRadar combines AI-powered evaluation, backend security scanning, and community validation to help you discover and trust the best GenLayer Community Projects.
           </p>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             <Link href="/explore" style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '11px 20px', background: 'var(--text-1)', color: 'var(--bg)', fontWeight: 700, fontSize: 13, textDecoration: 'none', borderRadius: 10 }}>
