@@ -6,23 +6,40 @@ import { ArrowRight, Shield, Cpu, Users, Upload, ExternalLink } from 'lucide-rea
 import { ProjectCard } from '@/components/ProjectCard'
 import type { Project } from '@/types'
 
-// Fetches the most recently evaluated project and builds real scan log lines from its data
+// Fetches the most recently EVALUATED project by querying ai_scores directly
+// This guarantees the freshest tx_hash — no stale data from projects API cache
 async function fetchLatestEvaluation() {
   try {
-    const res = await fetch(`/api/projects?sort=newest&limit=20&t=${Date.now()}`, {
-      cache: 'no-store', headers: { 'Cache-Control': 'no-cache, no-store' },
-    })
-    const d = await res.json()
-    const all: Project[] = d.projects ?? []
-    if (!all.length) return null
-    // Sort by newest first
-    const sorted = [...all].sort((a, b) =>
-      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    // Step 1: get the single most recently created ai_score row (has fresh tx_hash)
+    const scoresRes = await fetch(
+      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/ai_scores?select=project_id,score,risk,confidence,positives,risks,findings,breakdown,explanation,tx_hash,created_at&order=created_at.desc&limit=1`,
+      {
+        headers: {
+          apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+          Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!}`,
+        },
+        cache: 'no-store',
+      }
     )
-    // Prefer project with real score (score > 0)
-    const withScore = sorted.filter(p => p.ai_score && Number(p.ai_score.score) > 0)
-    // Always return something — real score or newest project (shows real name during evaluation)
-    return withScore[0] ?? sorted[0]
+    const scores = await scoresRes.json()
+    if (!scores?.length || !Number(scores[0].score)) return null
+    const latestScore = scores[0]
+
+    // Step 2: fetch that project's details
+    const projRes = await fetch(
+      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/projects?select=id,name,description,website_url,category,logo_url,created_at&id=eq.${latestScore.project_id}&status=eq.active`,
+      {
+        headers: {
+          apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+          Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!}`,
+        },
+        cache: 'no-store',
+      }
+    )
+    const projects = await projRes.json()
+    if (!projects?.length) return null
+
+    return { ...projects[0], ai_score: latestScore, _count: { views: 0, saves: 0 } } as Project
   } catch {
     return null
   }
@@ -65,7 +82,7 @@ function AIScanner() {
     const docsStatus     = hasDocs   ? '> Documentation... FOUND ✓'      : '> Documentation... NOT FOUND [-5]'
 
     return [
-      { text: `$ genverse-eval --project "${name}"`,         color: 'var(--text-3)',  delay: 0 },
+      { text: `$ genradar-eval --project "${name}"`,         color: 'var(--text-3)',  delay: 0 },
       { text: '> Connecting to GenLayer studionet...',        color: 'var(--text-2)', delay: 700 },
       { text: `> Scanning ${(p?.website_url ?? 'website').replace(/^https?:\/\//, '').slice(0, 36)}...`, color: 'var(--text-2)', delay: 1200 },
       { text: `> Phishing check... ${phishing ? '⚠ DETECTED [-25]' : 'OK ✓'}`,  color: phishing  ? '#D97706' : '#22C55E', delay: 1900 },
@@ -107,21 +124,44 @@ function AIScanner() {
 
   useEffect(() => {
     let cycleTimer: NodeJS.Timeout
+    let pollTimer: NodeJS.Timeout
 
-    async function cycle() {
-      const p = await fetchLatestEvaluation()
+    async function cycle(p: Project) {
       setProject(p)
       const steps = buildSteps(p, p?.ai_score?.tx_hash ?? null)
       runAnimation(steps)
-      // Restart after the last step + 3s pause
       const lastDelay = steps[steps.length - 1].delay
-      cycleTimer = setTimeout(cycle, lastDelay + 3000)
+      // After animation, poll for a newer evaluation instead of blindly repeating
+      cycleTimer = setTimeout(() => pollForNew(p.id), lastDelay + 3000)
     }
 
-    cycle()
+    async function pollForNew(currentId: string) {
+      const p = await fetchLatestEvaluation()
+      if (p && p.id !== currentId) {
+        // New project evaluated — start animation for it
+        clearTimeout(pollTimer)
+        cycle(p)
+      } else {
+        // Nothing new — stay paused on last result, check again in 10s
+        pollTimer = setTimeout(() => pollForNew(currentId), 10000)
+      }
+    }
+
+    async function start() {
+      const p = await fetchLatestEvaluation()
+      if (p) {
+        cycle(p)
+      } else {
+        // No evaluated projects yet — retry in 15s
+        pollTimer = setTimeout(start, 15000)
+      }
+    }
+
+    start()
     return () => {
       timersRef.current.forEach(clearTimeout)
       clearTimeout(cycleTimer)
+      clearTimeout(pollTimer)
     }
   }, [])
 
@@ -133,7 +173,7 @@ function AIScanner() {
         <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#EF4444' }} />
         <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#EAB308' }} />
         <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#22C55E' }} />
-        <span style={{ flex: 1, textAlign: 'center', fontSize: 11, color: 'rgba(255,255,255,0.3)', fontFamily: 'var(--font-mono)' }}>genverse — ai-evaluator</span>
+        <span style={{ flex: 1, textAlign: 'center', fontSize: 11, color: 'rgba(255,255,255,0.3)', fontFamily: 'var(--font-mono)' }}>genradar — ai-evaluator</span>
         <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#22C55E', animation: 'pulse 2s infinite' }} />
       </div>
       <div ref={ref} style={{ height: 230, overflowY: 'auto', padding: '12px 14px', scrollbarWidth: 'none' }}>
@@ -209,7 +249,7 @@ export default function HomePage() {
             <span style={{ color: 'var(--brand)' }}>GenLayer</span>
           </h1>
           <p style={{ fontSize: 14, color: 'var(--text-2)', lineHeight: 1.78, maxWidth: 380, marginBottom: 28 }}>
-            GenVerse combines AI-powered evaluation, backend security scanning, and community validation to help you discover and trust the best Web3 projects.
+            GenRadar combines AI-powered evaluation, backend security scanning, and community validation to help you discover and trust the best Web3 projects.
           </p>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             <Link href="/explore" style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '11px 20px', background: 'var(--text-1)', color: 'var(--bg)', fontWeight: 700, fontSize: 13, textDecoration: 'none', borderRadius: 10 }}>
@@ -267,10 +307,10 @@ export default function HomePage() {
 
       {/* ── HOW IT WORKS ── */}
       <section style={{ marginBottom: 40 }}>
-        <h2 style={{ fontWeight: 800, fontSize: 18, letterSpacing: '-0.02em', color: 'var(--text-1)', marginBottom: 20 }}>How GenVerse Works</h2>
+        <h2 style={{ fontWeight: 800, fontSize: 18, letterSpacing: '-0.02em', color: 'var(--text-1)', marginBottom: 20 }}>How GenRadar Works</h2>
         <div className="how-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
           {[
-            { n: '1', icon: Upload, title: 'Submission',              c: '#22C55E', bg: 'rgba(34,197,94,0.1)',  desc: 'Project owners submit their projects to GenVerse.' },
+            { n: '1', icon: Upload, title: 'Submission',              c: '#22C55E', bg: 'rgba(34,197,94,0.1)',  desc: 'Project owners submit their projects to GenRadar.' },
             { n: '2', icon: Shield, title: 'Backend Scanning',        c: '#EAB308', bg: 'rgba(234,179,8,0.1)',  desc: 'Automated scans detect risks, phishing, and vulnerabilities.' },
             { n: '3', icon: Cpu,    title: 'GenLayer AI Evaluation',  c: '#7C3AED', bg: 'rgba(124,58,237,0.1)', desc: 'GenLayer consensus evaluates across multiple dimensions.' },
             { n: '4', icon: Users,  title: 'Community Feedback',      c: '#22C55E', bg: 'rgba(34,197,94,0.1)',  desc: 'Community reviews improve trust over time.' },
@@ -290,9 +330,9 @@ export default function HomePage() {
       {/* ── WHY GENSCOUT + AI SCANNER ── */}
       <section className="why-ai-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 40 }}>
         <div style={{ background: 'var(--bg-secondary)', borderRadius: 16, padding: '28px' }}>
-          <h3 style={{ fontWeight: 800, fontSize: 18, letterSpacing: '-0.02em', color: 'var(--text-1)', marginBottom: 10 }}>Why GenVerse?</h3>
+          <h3 style={{ fontWeight: 800, fontSize: 18, letterSpacing: '-0.02em', color: 'var(--text-1)', marginBottom: 10 }}>Why GenRadar?</h3>
           <p style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.78, marginBottom: 20 }}>
-            GenVerse ensures transparency, security, and community trust so you can discover and support the best Web3 projects with confidence.
+            GenRadar ensures transparency, security, and community trust so you can discover and support the best Web3 projects with confidence.
           </p>
           <Link href="/explore" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 18px', background: 'var(--brand)', color: '#fff', fontWeight: 700, fontSize: 13, textDecoration: 'none', borderRadius: 8 }}>
             Explore Projects <ArrowRight size={13} />

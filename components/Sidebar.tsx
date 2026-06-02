@@ -29,99 +29,6 @@ function XIcon() {
 interface Props { session: Session | null }
 
 
-function BuilderCard({ session }: { session: any }) {
-  const [profile, setProfile] = useState<any>(null)
-
-  useEffect(() => {
-    if (!session?.user?.id) return
-    fetch(`/api/builder-profile?user_id=${session.user.id}`)
-      .then(r => r.json())
-      .then(d => setProfile(d.profile))
-      .catch(() => {})
-  }, [session?.user?.id])
-
-  const avatar = profile?.avatar_url || session?.user?.user_metadata?.avatar_url || null
-  const twitterUrl = profile?.twitter_url || null
-  const handle = twitterUrl
-    ? '@' + twitterUrl.replace(/.*x\.com\/|.*twitter\.com\//, '').replace(/\/$/, '')
-    : session?.user?.user_metadata?.full_name || session?.user?.email?.split('@')[0] || 'Builder'
-  const href = twitterUrl || '#'
-
-  return (
-    <a
-      href={href}
-      target={twitterUrl ? '_blank' : '_self'}
-      rel="noopener noreferrer"
-      style={{
-        display: 'flex', alignItems: 'center', gap: 10,
-        padding: '8px 10px', borderRadius: 10,
-        background: 'var(--bg-secondary)',
-        border: '1px solid var(--border)',
-        textDecoration: 'none',
-        transition: 'border-color 0.15s, background 0.15s',
-        cursor: twitterUrl ? 'pointer' : 'default',
-      }}
-      onMouseEnter={e => {
-        (e.currentTarget as HTMLAnchorElement).style.borderColor = 'var(--border-hi)'
-        ;(e.currentTarget as HTMLAnchorElement).style.background = 'var(--bg-tertiary)'
-      }}
-      onMouseLeave={e => {
-        (e.currentTarget as HTMLAnchorElement).style.borderColor = 'var(--border)'
-        ;(e.currentTarget as HTMLAnchorElement).style.background = 'var(--bg-secondary)'
-      }}
-    >
-      <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--bg)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
-        {avatar
-          ? <img src={avatar} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
-          : <span style={{ color: 'var(--text-1)' }}><XIcon /></span>
-        }
-      </div>
-      <div>
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-1)', lineHeight: 1.2 }}>{handle}</div>
-        <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 1 }}>Built by</div>
-      </div>
-    </a>
-  )
-}
-
-function BuilderAvatarCollapsed({ session }: { session: any }) {
-  const [avatar, setAvatar] = useState<string | null>(null)
-  const [twitterUrl, setTwitterUrl] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!session?.user?.id) return
-    fetch(`/api/builder-profile?user_id=${session.user.id}`)
-      .then(r => r.json())
-      .then(d => {
-        setAvatar(d.profile?.avatar_url || session?.user?.user_metadata?.avatar_url || null)
-        setTwitterUrl(d.profile?.twitter_url || null)
-      })
-      .catch(() => {})
-  }, [session?.user?.id])
-
-  return (
-    <a
-      href={twitterUrl || '#'}
-      target={twitterUrl ? '_blank' : '_self'}
-      rel="noopener noreferrer"
-      title="Built by"
-      style={{
-        width: 32, height: 32, borderRadius: '50%',
-        background: 'var(--bg-secondary)',
-        border: '1px solid var(--border)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        color: 'var(--text-2)', textDecoration: 'none',
-        overflow: 'hidden',
-      }}
-    >
-      {avatar
-        ? <img src={avatar} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-        : <XIcon />
-      }
-    </a>
-  )
-}
-
 export function Sidebar({ session: initialSession }: Props) {
   const pathname = usePathname()
   const [mounted,   setMounted]   = useState(false)
@@ -248,19 +155,12 @@ export function Sidebar({ session: initialSession }: Props) {
               </div>
             ))}
 
-            {/* Builder social block */}
-            <div style={{ borderTop: '1px solid var(--border)', marginTop: 4, paddingTop: 14 }}>
-              <BuilderCard session={initialSession} />
-            </div>
+
           </div>
         )}
 
         {/* Collapsed: show X icon only */}
-        {collapsed && mounted && (
-          <div style={{ borderTop: '1px solid var(--border)', padding: '12px 0', display: 'flex', justifyContent: 'center', flexShrink: 0 }}>
-            <BuilderAvatarCollapsed session={initialSession} />
-          </div>
-        )}
+
       </aside>
       <div style={{ width, minWidth: width, flexShrink: 0, transition: 'width 0.22s ease' }} />
     </>
