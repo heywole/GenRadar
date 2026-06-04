@@ -40,26 +40,11 @@ export function Sidebar({ session: initialSession }: Props) {
   useEffect(() => {
     setMounted(true)
     async function loadStats() {
-      const [p, a] = await Promise.all([
-        supabase.from('projects').select('*', { count: 'exact', head: true }).eq('status', 'active'),
-        supabase.from('ai_scores').select('*', { count: 'exact', head: true }),
-      ])
-      // Count distinct users from interactions + votes + messages combined
-      const [{ data: intUsers }, { data: voteUsers }, { data: msgUsers }] = await Promise.all([
-        supabase.from('interactions').select('user_id'),
-        supabase.from('votes').select('user_id'),
-        supabase.from('messages').select('user_id'),
-      ])
-      const allUserIds = new Set([
-        ...(intUsers ?? []).map((r: any) => r.user_id),
-        ...(voteUsers ?? []).map((r: any) => r.user_id),
-        ...(msgUsers ?? []).map((r: any) => r.user_id),
-      ])
-      setStats({
-        users:       allUserIds.size,
-        projects:    p.count ?? 0,
-        evaluations: a.count ?? 0,
-      })
+      try {
+        const res = await fetch('/api/stats')
+        const d = await res.json()
+        setStats({ users: d.users ?? 0, projects: d.projects ?? 0, evaluations: d.evaluations ?? 0 })
+      } catch {}
     }
     loadStats()
     const id = setInterval(loadStats, 30000)
