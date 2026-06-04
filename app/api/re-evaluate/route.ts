@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { evaluateProject } from '@/lib/genlayerAI'
 
+export const maxDuration = 300 // 5 minutes — requires Vercel Pro plan
+export const dynamic = 'force-dynamic'
+
 function cleanRisks(risks: string[], project: any): string[] {
   return risks.filter(risk => {
     const r = risk.toLowerCase()

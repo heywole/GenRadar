@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { submitProjectSchema } from '@/lib/validation'
+
+export const maxDuration = 300
+export const dynamic = 'force-dynamic'
 import { checkRateLimit } from '@/lib/rateLimit'
 
 export async function POST(req: NextRequest) {
