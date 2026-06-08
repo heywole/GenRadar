@@ -3,15 +3,20 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { User } from 'lucide-react'
-
 import { COUNTRY_FLAG } from '@/components/CountrySelector'
-const COUNTRY_FLAGS = COUNTRY_FLAG
 
 function badgeStyle(badge: string) {
   if (badge === 'Trusted Builder')     return { bg: '#FEF3C7', color: '#92400E', border: '#FDE68A' }
   if (badge === 'Established Builder') return { bg: '#EDE9FE', color: '#5B21B6', border: '#DDD6FE' }
   if (badge === 'Growing Builder')     return { bg: '#DBEAFE', color: '#1E40AF', border: '#BFDBFE' }
   return { bg: '#FCE7F3', color: '#9D174D', border: '#FBCFE8' }
+}
+
+function rankMedal(i: number) {
+  if (i === 0) return { emoji: '🥇', label: '#1 Builder', color: '#F59E0B' }
+  if (i === 1) return { emoji: '🥈', label: '#2 Builder', color: '#9CA3AF' }
+  if (i === 2) return { emoji: '🥉', label: '#3 Builder', color: '#B45309' }
+  return null
 }
 
 function XIcon() {
@@ -24,7 +29,7 @@ function GithubIcon() {
 export default function BuildersPage() {
   const router = useRouter()
   const [builders, setBuilders] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading,  setLoading]  = useState(true)
 
   useEffect(() => {
     fetch('/api/builders')
@@ -41,9 +46,9 @@ export default function BuildersPage() {
       </div>
 
       {loading ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
           {[...Array(6)].map((_, i) => (
-            <div key={i} style={{ height: 160, borderRadius: 14, background: 'var(--bg-secondary)', border: '1px solid var(--border)', animation: 'pulse 1.5s infinite' }} />
+            <div key={i} style={{ height: 200, borderRadius: 14, background: 'var(--bg-secondary)', border: '1px solid var(--border)' }} />
           ))}
         </div>
       ) : builders.length === 0 ? (
@@ -52,24 +57,33 @@ export default function BuildersPage() {
           <p style={{ fontSize: 15, fontWeight: 600 }}>No builders yet</p>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
-          {builders.map(b => {
-            const flag = b.country ? COUNTRY_FLAGS[b.country] ?? '' : ''
-            const bs = badgeStyle(b.badge)
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
+          {builders.map((b, i) => {
+            const flag   = b.country ? (COUNTRY_FLAG[b.country] ?? '') : ''
+            const bs     = badgeStyle(b.badge)
+            const medal  = rankMedal(i)
             return (
               <div
                 key={b.user_id}
                 onClick={() => router.push(`/profile?builder=${b.user_id}`)}
                 style={{
-                  background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                  background: 'var(--bg-secondary)', border: `1px solid ${medal ? 'var(--border-hi)' : 'var(--border)'}`,
                   borderRadius: 14, padding: '20px', cursor: 'pointer',
                   transition: 'border-color 0.15s, transform 0.12s',
+                  position: 'relative',
                 }}
-                onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--border-hi)'; (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)' }}
-                onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--border)'; (e.currentTarget as HTMLDivElement).style.transform = 'translateY(0)' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--brand)'; (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)' }}
+                onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = medal ? 'var(--border-hi)' : 'var(--border)'; (e.currentTarget as HTMLDivElement).style.transform = 'translateY(0)' }}
               >
-                {/* Top: avatar + name + badge */}
-                <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', marginBottom: 16 }}>
+                {/* Medal badge — top right */}
+                {medal && (
+                  <div style={{ position: 'absolute', top: 14, right: 14, display: 'flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 999, background: 'var(--bg-card)', border: '1px solid var(--border-hi)', fontSize: 11, fontWeight: 700, color: medal.color }}>
+                    {medal.emoji} {medal.label}
+                  </div>
+                )}
+
+                {/* Avatar + Name + Flag + Badge */}
+                <div style={{ display: 'flex', gap: 14, alignItems: 'center', marginBottom: 16 }}>
                   <div style={{ width: 52, height: 52, borderRadius: '50%', overflow: 'hidden', flexShrink: 0, background: 'var(--bg-tertiary)', border: '2px solid var(--border-hi)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     {b.avatar_url
                       ? <img src={b.avatar_url} alt={b.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -77,30 +91,40 @@ export default function BuildersPage() {
                     }
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                      <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.name}</span>
-                      {flag && <span style={{ fontSize: 16 }}>{flag}</span>}
+                    {/* Name + Flag */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, flexWrap: 'wrap' }}>
+                      <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {b.name || 'Builder'}
+                      </span>
+                      {flag && <span style={{ fontSize: 18 }}>{flag}</span>}
                     </div>
-                    <span style={{ padding: '3px 10px', borderRadius: 999, fontSize: 11, fontWeight: 600, background: bs.bg, color: bs.color, border: `1px solid ${bs.border}` }}>
+                    {/* Badge */}
+                    <span style={{ padding: '3px 10px', borderRadius: 999, fontSize: 11, fontWeight: 600, background: bs.bg, color: bs.color, border: `1px solid ${bs.border}`, display: 'inline-block' }}>
                       {b.badge}
                     </span>
                   </div>
                 </div>
 
                 {/* Stats */}
-                <div style={{ display: 'flex', gap: 20, marginBottom: 14 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" strokeWidth="2"><rect x="2" y="3" width="7" height="7" rx="1"/><rect x="15" y="3" width="7" height="7" rx="1"/><rect x="2" y="14" width="7" height="7" rx="1"/><rect x="15" y="14" width="7" height="7" rx="1"/></svg>
+                <div style={{ display: 'flex', gap: 20, marginBottom: 14, borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--bg-tertiary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" strokeWidth="2"><rect x="2" y="3" width="7" height="7" rx="1"/><rect x="15" y="3" width="7" height="7" rx="1"/><rect x="2" y="14" width="7" height="7" rx="1"/><rect x="15" y="14" width="7" height="7" rx="1"/></svg>
+                    </div>
                     <div>
-                      <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-1)', lineHeight: 1 }}>{b.totalProjects}</div>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-1)', lineHeight: 1, letterSpacing: '-0.02em' }}>{b.totalProjects}</div>
                       <div style={{ fontSize: 10, color: 'var(--text-3)' }}>Projects</div>
                     </div>
                   </div>
                   {b.avgScore !== null && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--bg-tertiary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                      </div>
                       <div>
-                        <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-1)', lineHeight: 1 }}>{b.avgScore}<span style={{ fontSize: 10, fontWeight: 400, color: 'var(--text-3)' }}>/100</span></div>
+                        <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-1)', lineHeight: 1, letterSpacing: '-0.02em' }}>
+                          {b.avgScore}<span style={{ fontSize: 10, fontWeight: 400, color: 'var(--text-3)' }}>/100</span>
+                        </div>
                         <div style={{ fontSize: 10, color: 'var(--text-3)' }}>Avg. Score</div>
                       </div>
                     </div>
@@ -108,7 +132,7 @@ export default function BuildersPage() {
                 </div>
 
                 {/* Socials */}
-                <div style={{ display: 'flex', gap: 10 }}>
+                <div style={{ display: 'flex', gap: 8 }}>
                   {b.twitter_url && (
                     <a href={b.twitter_url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
                       style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 6, background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-2)', textDecoration: 'none' }}>

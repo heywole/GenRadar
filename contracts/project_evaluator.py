@@ -1,4 +1,4 @@
-# v0.3.0
+# v0.4.0 — Two-pillar scoring: Security + Transparency
 # { "Depends": "py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6" }
 from genlayer import *
 import json
@@ -28,110 +28,106 @@ class ProjectEvaluator(gl.Contract):
         except Exception:
             signals = {}
 
-        # ── SCORING ──────────────────────────────────────────────────────────
-        score      = 100
-        deductions = []
+        # ── SECURITY SCORE (0–100) ────────────────────────────────────────────
+        # Each check adds points. A clean project scores 100.
+        security = 0
+        security_breakdown = {}
 
-        # Threat database flags (heaviest penalties)
-        if bool(signals.get("goplus_flagged", False)):
-            score -= 30
-            deductions.append("Flagged by GoPlus security database (-30)")
+        goplus = bool(signals.get("goplus_flagged", False))
+        sb     = bool(signals.get("safe_browsing_flagged", False))
+        scam   = bool(signals.get("scamsniffer_flagged", False))
 
-        if bool(signals.get("safe_browsing_flagged", False)):
-            score -= 30
-            deductions.append("Flagged by Google Safe Browsing (-30)")
+        # Database checks (+20 each = 60 max)
+        gp_pts = 0 if goplus else 20
+        sb_pts = 0 if sb     else 20
+        sc_pts = 0 if scam   else 20
+        security_breakdown["goplus"]        = gp_pts
+        security_breakdown["safe_browsing"] = sb_pts
+        security_breakdown["scamsniffer"]   = sc_pts
+        security += gp_pts + sb_pts + sc_pts
 
-        if bool(signals.get("scamsniffer_flagged", False)):
-            score -= 30
-            deductions.append("Flagged by ScamSniffer phishing database (-30)")
+        # HTML analysis (+15 wallet, +10 honeypot, +10 ssl, +5 scripts = 40 max)
+        phishing     = bool(signals.get("phishing_detected", False))
+        wallet_bad   = bool(signals.get("unsafe_wallet_behavior", False))
+        honeypot     = bool(signals.get("has_honeypot_patterns", False))
+        bad_scripts  = bool(signals.get("suspicious_scripts", False))
+        ssl          = bool(signals.get("ssl_valid", True))
 
-        # Security penalties
-        if bool(signals.get("phishing_detected", False)):
-            score -= 25
-            deductions.append("Phishing patterns detected in website code (-25)")
+        # Deduct from bonus pool: wallet -15, honeypot -10, ssl -10, scripts -5
+        wallet_pts  = 0 if (wallet_bad or phishing) else 15
+        honeypot_pts = 0 if honeypot   else 10
+        ssl_pts      = 10 if ssl       else 0
+        scripts_pts  = 0 if bad_scripts else 5
+        security_breakdown["wallet_safe"]  = wallet_pts
+        security_breakdown["no_honeypot"]  = honeypot_pts
+        security_breakdown["ssl"]          = ssl_pts
+        security_breakdown["clean_scripts"] = scripts_pts
+        security += wallet_pts + honeypot_pts + ssl_pts + scripts_pts
 
-        if bool(signals.get("unsafe_wallet_behavior", False)):
-            score -= 23
-            deductions.append("Unsafe wallet approval patterns detected (-23)")
+        security = max(0, min(100, security))
 
-        if bool(signals.get("has_honeypot_patterns", False)):
-            score -= 20
-            deductions.append("Honeypot or fake reward patterns detected (-20)")
+        # ── TRANSPARENCY SCORE (0–100) ────────────────────────────────────────
+        transparency = 0
+        transparency_breakdown = {}
 
-        if bool(signals.get("suspicious_scripts", False)):
-            score -= 15
-            deductions.append("Obfuscated or malicious scripts detected (-15)")
+        has_github   = bool(signals.get("has_github",   False))
+        has_docs     = bool(signals.get("has_docs",     False))
+        has_twitter  = bool(signals.get("has_twitter",  False))
+        has_telegram = bool(signals.get("has_telegram", False))
+        has_discord  = bool(signals.get("has_discord",  False))
 
-        if bool(signals.get("hidden_redirects", False)):
-            score -= 10
-            deductions.append("Hidden auto-redirects detected (-10)")
+        # Website always present (+25) since they submitted it
+        web_pts  = 25
+        gh_pts   = 20 if has_github   else 0
+        doc_pts  = 20 if has_docs     else 0
+        tw_pts   = 15 if has_twitter  else 0
+        tg_pts   = 10 if has_telegram else 0
+        dc_pts   = 10 if has_discord  else 0
 
-        if not bool(signals.get("ssl_valid", True)):
-            score -= 8
-            deductions.append("No HTTPS/SSL certificate (-8)")
+        transparency_breakdown["website"]   = web_pts
+        transparency_breakdown["github"]    = gh_pts
+        transparency_breakdown["docs"]      = doc_pts
+        transparency_breakdown["twitter"]   = tw_pts
+        transparency_breakdown["telegram"]  = tg_pts
+        transparency_breakdown["discord"]   = dc_pts
 
-        domain_age = signals.get("domain_age_days", None)
-        if domain_age is not None:
-            try:
-                if int(domain_age) < 30:
-                    score -= 5
-                    deductions.append("Domain registered less than 30 days ago (-5)")
-            except Exception:
-                pass
+        transparency += web_pts + gh_pts + doc_pts + tw_pts + tg_pts + dc_pts
+        transparency = max(0, min(100, transparency))
 
-        # Transparency penalties
-        if not bool(signals.get("has_github", False)):
-            score -= 10
-            deductions.append("No public GitHub repository linked (-10)")
+        # ── FINAL SCORE = average ─────────────────────────────────────────────
+        score = round((security + transparency) / 2)
+        risk  = "Low" if score >= 75 else "Medium" if score >= 50 else "High"
 
-        if not bool(signals.get("has_docs", False)):
-            score -= 5
-            deductions.append("No documentation linked (-5)")
-
-        # Community presence — use submitted URLs as ground truth
-        if not bool(signals.get("has_twitter", False)):
-            score -= 3
-            deductions.append("No Twitter/X account linked (-3)")
-
-        if not bool(signals.get("has_telegram", False)):
-            score -= 3
-            deductions.append("No Telegram community linked (-3)")
-
-        if not bool(signals.get("has_discord", False)):
-            score -= 3
-            deductions.append("No Discord server linked (-3)")
-
-        score      = max(0, min(100, score))
-        risk       = "Low" if score >= 75 else "Medium" if score >= 50 else "High"
         unreachable = bool(signals.get("website_unreachable", False))
-        has_github  = bool(signals.get("has_github", False))
         confidence  = "Low" if unreachable else ("High" if has_github else "Medium")
 
-        deduction_summary = "; ".join(deductions) if deductions else "No deductions applied"
-        github_summary    = str(signals.get("github_summary", ""))
-        site_preview      = str(signals.get("website_preview", ""))
+        # ── DEDUCTIONS SUMMARY (for AI narrative) ─────────────────────────────
+        deductions = []
+        if goplus:       deductions.append("Flagged by GoPlus database")
+        if sb:           deductions.append("Flagged by Google Safe Browsing")
+        if scam:         deductions.append("Flagged by ScamSniffer")
+        if phishing:     deductions.append("Phishing patterns in HTML")
+        if wallet_bad:   deductions.append("Unsafe wallet patterns detected")
+        if honeypot:     deductions.append("Honeypot patterns detected")
+        if bad_scripts:  deductions.append("Obfuscated scripts detected")
+        if not ssl:      deductions.append("No SSL/HTTPS certificate")
+        if not has_github:   deductions.append("No GitHub repository linked")
+        if not has_docs:     deductions.append("No documentation linked")
+        if not has_twitter:  deductions.append("No Twitter/X linked")
+        if not has_telegram: deductions.append("No Telegram linked")
+        if not has_discord:  deductions.append("No Discord linked")
 
-        # ── AI NARRATIVE ─────────────────────────────────────────────────────
-        # AI writes ONLY the narrative text. Score is fixed above.
-        has_twitter  = bool(signals.get("has_twitter", False))
-        has_telegram = bool(signals.get("has_telegram", False))
-        has_discord  = bool(signals.get("has_discord", False))
-        has_docs     = bool(signals.get("has_docs", False))
-        goplus       = bool(signals.get("goplus_flagged", False))
-        sb           = bool(signals.get("safe_browsing_flagged", False))
-        scam         = bool(signals.get("scamsniffer_flagged", False))
-        phishing     = bool(signals.get("phishing_detected", False))
-        wallet_safe  = not bool(signals.get("unsafe_wallet_behavior", False))
-        no_scripts   = not bool(signals.get("suspicious_scripts", False))
-        no_redirects = not bool(signals.get("hidden_redirects", False))
-        ssl          = bool(signals.get("ssl_valid", True))
-        honeypot     = bool(signals.get("has_honeypot_patterns", False))
+        github_summary = str(signals.get("github_summary", ""))
+        site_preview   = str(signals.get("website_preview", ""))
+        deduction_text = "; ".join(deductions) if deductions else "No issues found"
 
-        prompt = f"""You are a Web3 security analyst for GenVerse, a GenLayer-powered trust platform.
+        # ── AI NARRATIVE ──────────────────────────────────────────────────────
+        prompt = f"""You are a Web3 security analyst for GenRadar, a GenLayer-powered trust platform.
 
-A backend scanner has analyzed this project using GoPlus, Google Safe Browsing, ScamSniffer,
-deep HTML analysis, and GitHub verification. The score is FINAL at {score}/100.
-Your ONLY job is to write accurate narrative text based on the exact scanner findings below.
+A backend scanner analyzed this project. Two scores are FINAL — do not change them:
+- Security Score: {security}/100
+- Transparency Score: {transparency}/100
+- Final Score: {score}/100
 
 PROJECT:
 Name: {name}
@@ -140,38 +136,32 @@ Description: {description[:400]}
 Website: {website_url}
 GitHub: {github_url if github_url else "not provided"}
 
-EXACT SCANNER RESULTS (write narrative based ONLY on these facts):
+EXACT SCANNER RESULTS:
 - GoPlus flagged: {goplus}
 - Google Safe Browsing flagged: {sb}
 - ScamSniffer flagged: {scam}
-- Phishing patterns in HTML: {phishing}
-- Unsafe wallet behavior: {not wallet_safe}
+- Phishing patterns: {phishing}
+- Unsafe wallet behavior: {wallet_bad}
 - Honeypot patterns: {honeypot}
-- Obfuscated scripts: {not no_scripts}
-- Hidden redirects: {not no_redirects}
+- Obfuscated scripts: {bad_scripts}
 - SSL/HTTPS valid: {ssl}
 - Website unreachable: {unreachable}
-- GitHub repository confirmed: {has_github}
-- GitHub details: {github_summary}
+- GitHub confirmed: {has_github} ({github_summary})
 - Documentation linked: {has_docs}
 - Twitter/X linked: {has_twitter}
 - Telegram linked: {has_telegram}
 - Discord linked: {has_discord}
 - Website preview: {site_preview[:300]}
 
-SCORE: {score}/100 | RISK: {risk}
-DEDUCTIONS: {deduction_summary}
+RULES:
+1. If has_twitter is True, do NOT say Twitter is missing. Same for all other socials.
+2. Only mention something as missing if its value is False.
+3. Be specific and accurate.
+4. Do not change any scores.
+5. Write security_explanation and transparency_explanation separately.
 
-IMPORTANT RULES:
-1. If has_twitter is True, do NOT mention missing Twitter. Same for telegram, discord, github, docs.
-2. Only mention something as missing if its scanner value is False.
-3. Write specific, accurate statements — not generic.
-4. Do not suggest a different score.
-
-Write 2-4 positives, 1-4 risks (only for what is actually False/flagged), findings, and explanation.
-
-Return ONLY valid JSON, no markdown:
-{{"positives": ["..."], "risks": ["..."], "findings": ["..."], "explanation": "..."}}"""
+Return ONLY valid JSON:
+{{"positives": ["..."], "risks": ["..."], "findings": ["..."], "explanation": "...", "security_explanation": "...", "transparency_explanation": "..."}}"""
 
         def run_node():
             result = gl.nondet.exec_prompt(prompt)
@@ -191,17 +181,19 @@ Return ONLY valid JSON, no markdown:
         try:
             consensus = gl.eq_principle.prompt_comparative(
                 run_node,
-                "The narrative must accurately reflect scanner findings. Do not mention missing socials if they were provided."
+                "Narrative must accurately reflect scanner findings. Do not mention missing socials if they were provided."
             )
         except Exception:
             try:
                 consensus = run_node()
             except Exception:
                 consensus = json.dumps({
-                    "positives": ["Website accessible" if not unreachable else "Project submitted for review"],
-                    "risks":     deductions[:3] if deductions else ["Insufficient data for full analysis"],
-                    "findings":  [deduction_summary],
-                    "explanation": f"Score of {score}/100. {deduction_summary}",
+                    "positives": ["Website is accessible" if not unreachable else "Project submitted for review"],
+                    "risks": deductions[:3] if deductions else ["Insufficient data"],
+                    "findings": [deduction_text],
+                    "explanation": f"Security: {security}/100. Transparency: {transparency}/100. Final: {score}/100.",
+                    "security_explanation": f"Security score {security}/100 based on threat database checks and HTML analysis.",
+                    "transparency_explanation": f"Transparency score {transparency}/100 based on public presence and documentation.",
                 })
 
         try:
@@ -210,33 +202,25 @@ Return ONLY valid JSON, no markdown:
             data = {}
 
         output = {
-            "score":      score,
-            "risk":       risk,
-            "confidence": confidence,
-            "positives":  list(data.get("positives", []))[:5],
-            "risks":      list(data.get("risks", deductions[:3]))[:5],
-            "findings":   list(data.get("findings", []))[:5],
-            "explanation": str(data.get("explanation", deduction_summary)),
+            "score":                    score,
+            "security_score":           security,
+            "transparency_score":       transparency,
+            "risk":                     risk,
+            "confidence":               confidence,
+            "positives":                list(data.get("positives", []))[:5],
+            "risks":                    list(data.get("risks", deductions[:3]))[:5],
+            "findings":                 list(data.get("findings", []))[:5],
+            "explanation":              str(data.get("explanation", deduction_text)),
+            "security_explanation":     str(data.get("security_explanation", "")),
+            "transparency_explanation": str(data.get("transparency_explanation", "")),
             "breakdown": {
-                "security":     max(0, 100
-                    - (30 if goplus else 0)
-                    - (30 if sb else 0)
-                    - (25 if phishing else 0)
-                    - (23 if not wallet_safe else 0)
-                    - (15 if not no_scripts else 0)
-                    - (10 if not no_redirects else 0)
-                    - (8  if not ssl else 0)),
-                "transparency": max(0, 100
-                    - (10 if not has_github else 0)
-                    - (5  if not has_docs   else 0)),
-                "community": max(0, 100
-                    - (3 if not has_twitter  else 0)
-                    - (3 if not has_telegram else 0)
-                    - (3 if not has_discord  else 0)),
+                "security":      security,
+                "transparency":  transparency,
+                "security_detail":      security_breakdown,
+                "transparency_detail":  transparency_breakdown,
             },
         }
 
-        # Always overwrite — one result per project_id
         self.results[project_id] = json.dumps(output)
 
     @gl.public.view

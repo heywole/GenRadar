@@ -69,6 +69,8 @@ export async function evaluateProject(
       goplus_flagged: false, safe_browsing_flagged: false, scamsniffer_flagged: false,
       ssl_valid: true, redirect_chain_length: 0, external_script_count: 0,
       has_honeypot_patterns: false,
+      security_score:     90,
+      transparency_score: (25 + (!!(project.github_url) ? 20 : 0) + (!!(project as any).docs_url ? 20 : 0) + (!!(project as any).twitter_url ? 15 : 0) + (!!project.telegram_url ? 10 : 0) + (!!(project as any).discord_url ? 10 : 0)),
     }
   }
 

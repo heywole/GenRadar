@@ -28,6 +28,8 @@ export interface ScannerSignals {
   redirect_chain_length:   number
   external_script_count:   number
   has_honeypot_patterns:   boolean
+  security_score:          number
+  transparency_score:      number
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -83,7 +85,7 @@ async function checkGoogleSafeBrowsing(url: string): Promise<{ flagged: boolean;
   if (!apiKey) return { flagged: false, detail: 'Safe Browsing: no API key configured' }
   try {
     const body = {
-      client: { clientId: 'genverse', clientVersion: '1.0' },
+      client: { clientId: 'genradar', clientVersion: '1.0' },
       threatInfo: {
         threatTypes:      ['MALWARE', 'SOCIAL_ENGINEERING', 'UNWANTED_SOFTWARE', 'POTENTIALLY_HARMFUL_APPLICATION'],
         platformTypes:    ['ANY_PLATFORM'],
@@ -257,6 +259,8 @@ export async function scanProject(
     redirect_chain_length:  0,
     external_script_count:  0,
     has_honeypot_patterns:  false,
+    security_score:         0,
+    transparency_score:     0,
   }
 
   const domain = extractDomain(website_url)
@@ -328,7 +332,7 @@ export async function scanProject(
         const cleanRepo = repo.replace(/\.git$/, '')
         const repoRes = await fetchWithTimeout(
           `https://api.github.com/repos/${owner}/${cleanRepo}`,
-          { headers: { 'Accept': 'application/vnd.github.v3+json', 'User-Agent': 'GenVerseBot' } },
+          { headers: { 'Accept': 'application/vnd.github.v3+json', 'User-Agent': 'GenRadarBot' } },
           8000
         )
         if (repoRes.ok) {
@@ -345,15 +349,36 @@ export async function scanProject(
             data.license ? `License: ${data.license.spdx_id}` : 'No license',
           ].join('. ')
         } else if (repoRes.status === 404) {
-          // URL was submitted but repo doesn't exist or is private
-          signals.has_github = false
-          signals.github_summary = 'GitHub repo not found or private'
+          // Repo not found or private — but user DID submit a URL, so keep has_github = true
+          // Don't penalize for private repos. Only penalize if no URL was submitted at all.
+          signals.github_summary = 'GitHub repo is private or not publicly accessible'
         }
       }
     } catch {
       signals.github_summary = 'GitHub check failed'
     }
   }
+
+  // ── Pre-calculate pillar scores (mirrors contract logic) ─────────────────
+  const sec_goplus   = signals.goplus_flagged        ? 0 : 20
+  const sec_sb       = signals.safe_browsing_flagged ? 0 : 20
+  const sec_scam     = signals.scamsniffer_flagged   ? 0 : 20
+  const sec_wallet   = (signals.unsafe_wallet_behavior || signals.phishing_detected) ? 0 : 15
+  const sec_honeypot = signals.has_honeypot_patterns ? 0 : 10
+  const sec_ssl      = signals.ssl_valid !== false    ? 10 : 0
+  const sec_scripts  = signals.suspicious_scripts     ? 0 : 5
+  const security_score = Math.min(100, sec_goplus + sec_sb + sec_scam + sec_wallet + sec_honeypot + sec_ssl + sec_scripts)
+
+  const tr_website  = 25
+  const tr_github   = signals.has_github   ? 20 : 0
+  const tr_docs     = signals.has_docs     ? 20 : 0
+  const tr_twitter  = signals.has_twitter  ? 15 : 0
+  const tr_telegram = signals.has_telegram ? 10 : 0
+  const tr_discord  = signals.has_discord  ? 10 : 0
+  const transparency_score = Math.min(100, tr_website + tr_github + tr_docs + tr_twitter + tr_telegram + tr_discord)
+
+  signals.security_score     = security_score
+  signals.transparency_score = transparency_score
 
   // ── Log scan summary ─────────────────────────────────────────────────────
   console.log(`[Scanner] ${domain}`, {
@@ -368,6 +393,8 @@ export async function scanProject(
     has_twitter:  signals.has_twitter,
     has_github:   signals.has_github,
     has_docs:     signals.has_docs,
+    security_score,
+    transparency_score,
   })
 
   return signals

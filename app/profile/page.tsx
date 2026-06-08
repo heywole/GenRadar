@@ -33,7 +33,7 @@ export default function ProfilePage() {
   const [editForm,        setEditForm]        = useState({ name: '', description: '', website_url: '', github_url: '', twitter_url: '', discord_url: '', docs_url: '', category: '' })
   const [builderProfile,  setBuilderProfile]  = useState<any>(null)
   const [showBuilderForm, setShowBuilderForm] = useState(false)
-  const [builderForm,     setBuilderForm]     = useState({ bio: '', twitter_url: '', telegram_url: '', github_url: '', discord_url: '', website_url: '', other_links: '', avatar_url: '', country: '' })
+  const [builderForm,     setBuilderForm]     = useState({ name: '', bio: '', twitter_url: '', telegram_url: '', github_url: '', discord_url: '', website_url: '', other_links: '', avatar_url: '', country: '' })
   const [countrySearch,   setCountrySearch]   = useState('')
   const [countryOpen,     setCountryOpen]     = useState(false)
   const [savingBuilder,   setSavingBuilder]   = useState(false)
@@ -67,6 +67,7 @@ export default function ProfilePage() {
       if (data.profile) {
         setBuilderProfile(data.profile)
         setBuilderForm({
+          name:         data.profile.name         || '',
           bio:          data.profile.bio          || '',
           twitter_url:  data.profile.twitter_url  || '',
           telegram_url: data.profile.telegram_url || '',
@@ -289,8 +290,10 @@ export default function ProfilePage() {
       {showBuilderForm && (
         <div style={{ marginBottom: 28, padding: '24px', background: 'var(--bg-secondary)', borderRadius: 14, border: '1px solid var(--border-hi)' }}>
           <h3 style={{ fontWeight: 700, fontSize: 15, color: 'var(--text-1)', margin: '0 0 4px' }}>Builder Profile</h3>
-          <p style={{ fontSize: 12, color: 'var(--text-3)', margin: '0 0 20px' }}>Visible on your project pages</p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <p style={{ fontSize: 12, color: 'var(--text-3)', margin: '0 0 20px' }}>Your public identity on GenRadar. Visible on all your project pages and the Builders directory.</p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+
+            {/* Avatar */}
             <div style={{ gridColumn: '1 / -1' }}>
               <label style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-3)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 5 }}>
                 <Camera size={10} /> Profile Picture
@@ -309,20 +312,51 @@ export default function ProfilePage() {
                 </label>
               </div>
             </div>
+
+            {/* Builder Name */}
             <div style={{ gridColumn: '1 / -1' }}>
-              <label style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-3)', marginBottom: 6, display: 'block' }}>Bio</label>
-              <textarea value={builderForm.bio} onChange={e => setBuilderForm(f => ({ ...f, bio: e.target.value }))} placeholder="Tell the community about yourself..." rows={3} style={{ ...inp, resize: 'vertical' }} />
+              <label style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-3)', marginBottom: 4, display: 'block' }}>
+                Builder Name <span style={{ color: 'var(--red)' }}>*</span>
+              </label>
+              <p style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 6 }}>Your display name shown on project cards and the builders directory</p>
+              <input
+                type="text"
+                value={builderForm.name || ''}
+                onChange={e => setBuilderForm(f => ({ ...f, name: e.target.value }))}
+                placeholder="e.g. John Doe, 0xBuilder, Alice"
+                style={inp}
+              />
             </div>
+
+            {/* Bio */}
             <div style={{ gridColumn: '1 / -1' }}>
-              <label style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-3)', marginBottom: 6, display: 'block' }}>Country</label>
+              <label style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-3)', marginBottom: 4, display: 'block' }}>Bio</label>
+              <p style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 6 }}>A short description about yourself — what you build, your background, or your focus area</p>
+              <textarea value={builderForm.bio} onChange={e => setBuilderForm(f => ({ ...f, bio: e.target.value }))} placeholder="e.g. Full-stack Web3 developer building on GenLayer. Focused on DeFi and prediction markets." rows={3} style={{ ...inp, resize: 'vertical' }} />
+            </div>
+
+            {/* Country */}
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-3)', marginBottom: 4, display: 'block' }}>Country</label>
+              <p style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 6 }}>Your country flag will appear next to your name on your builder profile</p>
               <CountrySelector value={builderForm.country} onChange={v => setBuilderForm(f => ({ ...f, country: v }))} />
             </div>
-            {(['twitter_url','github_url','telegram_url','discord_url','website_url','other_links'] as const).map(key => (
+
+            {/* Social links with descriptions */}
+            {([
+              { key: 'twitter_url',  label: 'Twitter / X', placeholder: 'https://x.com/yourhandle', desc: 'Your X (Twitter) profile — shows on your builder card' },
+              { key: 'github_url',   label: 'GitHub',       placeholder: 'https://github.com/yourusername', desc: 'Your GitHub profile — helps verify your open source work' },
+              { key: 'telegram_url', label: 'Telegram',     placeholder: 'https://t.me/yourusername', desc: 'Your Telegram handle for community contact' },
+              { key: 'discord_url',  label: 'Discord',      placeholder: 'https://discord.gg/yourserver or username#1234', desc: 'Your Discord username or server invite' },
+              { key: 'website_url',  label: 'Personal Website', placeholder: 'https://yourwebsite.com', desc: 'Your portfolio or personal site' },
+              { key: 'other_links',  label: 'Other Links',  placeholder: 'Any other relevant links', desc: 'LinkedIn, Farcaster, Mirror, etc.' },
+            ] as const).map(({ key, label, placeholder, desc }) => (
               <div key={key}>
-                <label style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-3)', marginBottom: 6, display: 'block' }}>
-                  {key.replace(/_url$/, '').replace(/_/g, ' ')}
+                <label style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-3)', marginBottom: 4, display: 'block' }}>
+                  {label}
                 </label>
-                <input type="text" value={(builderForm as any)[key]} onChange={e => setBuilderForm(f => ({ ...f, [key]: e.target.value }))} style={inp} />
+                <p style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 6 }}>{desc}</p>
+                <input type="text" value={(builderForm as any)[key]} onChange={e => setBuilderForm(f => ({ ...f, [key]: e.target.value }))} placeholder={placeholder} style={inp} />
               </div>
             ))}
           </div>
