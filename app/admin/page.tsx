@@ -44,6 +44,9 @@ export default function AdminPage() {
   const [filter,    setFilter]    = useState('all')
   const [acting,    setActing]    = useState<string | null>(null)
   const [msg,       setMsg]       = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [selected,  setSelected]  = useState<Set<string>>(new Set())
+  const [bulkBusy,  setBulkBusy]  = useState(false)
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null)
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
@@ -97,6 +100,96 @@ export default function AdminPage() {
       setMsg({ type: 'error', text: e.message })
     }
     setActing(null)
+  }
+
+  // Raw action call without confirm/message — used by bulk runner
+  async function rawAction(action: string, project_id: string) {
+    if (!token) return { error: 'No token' }
+    try {
+      const res = await fetch('/api/admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action, project_id }),
+      })
+      return await res.json()
+    } catch (e: any) {
+      return { error: e.message }
+    }
+  }
+
+  function toggleSelect(id: string) {
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function toggleSelectAll() {
+    setSelected(prev => {
+      if (prev.size === filteredProjects.length) return new Set()
+      return new Set(filteredProjects.map((p: any) => p.id))
+    })
+  }
+
+  async function bulkReevaluate() {
+    if (selected.size === 0) return
+    if (!window.confirm(`Re-evaluate ${selected.size} selected project(s)? This runs one at a time and may take a while.`)) return
+    setBulkBusy(true)
+    setMsg(null)
+    const ids = [...selected]
+    setBulkProgress({ done: 0, total: ids.length })
+    let okCount = 0, errCount = 0
+    for (let i = 0; i < ids.length; i++) {
+      const r = await rawAction('re-evaluate', ids[i])
+      if (r?.error) errCount++; else okCount++
+      setBulkProgress({ done: i + 1, total: ids.length })
+      await fetchData()
+    }
+    setBulkBusy(false)
+    setBulkProgress(null)
+    setSelected(new Set())
+    setMsg({ type: errCount ? 'error' : 'success', text: `Re-evaluated ${okCount} project(s)${errCount ? `, ${errCount} failed` : ''}.` })
+  }
+
+  async function bulkDelete() {
+    if (selected.size === 0) return
+    if (!window.confirm(`Permanently delete ${selected.size} selected project(s)? This cannot be undone.`)) return
+    setBulkBusy(true)
+    setMsg(null)
+    const ids = [...selected]
+    setBulkProgress({ done: 0, total: ids.length })
+    let okCount = 0, errCount = 0
+    for (let i = 0; i < ids.length; i++) {
+      const r = await rawAction('delete', ids[i])
+      if (r?.error) errCount++; else okCount++
+      setBulkProgress({ done: i + 1, total: ids.length })
+    }
+    await fetchData()
+    setBulkBusy(false)
+    setBulkProgress(null)
+    setSelected(new Set())
+    setMsg({ type: errCount ? 'error' : 'success', text: `Deleted ${okCount} project(s)${errCount ? `, ${errCount} failed` : ''}.` })
+  }
+
+  async function reevaluateAll() {
+    const ids = filteredProjects.map((p: any) => p.id)
+    if (ids.length === 0) return
+    if (!window.confirm(`Re-evaluate ALL ${ids.length} project(s) currently shown? This runs one at a time and may take a while.`)) return
+    setBulkBusy(true)
+    setMsg(null)
+    setBulkProgress({ done: 0, total: ids.length })
+    let okCount = 0, errCount = 0
+    for (let i = 0; i < ids.length; i++) {
+      const r = await rawAction('re-evaluate', ids[i])
+      if (r?.error) errCount++; else okCount++
+      setBulkProgress({ done: i + 1, total: ids.length })
+      await fetchData()
+    }
+    setBulkBusy(false)
+    setBulkProgress(null)
+    setMsg({ type: errCount ? 'error' : 'success', text: `Re-evaluated ${okCount} project(s)${errCount ? `, ${errCount} failed` : ''}.` })
   }
 
   if (!authed || loading) {
@@ -200,6 +293,76 @@ export default function AdminPage() {
             </select>
           </div>
 
+          {/* Bulk action toolbar */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+            marginBottom: 14, padding: '10px 14px', borderRadius: 10,
+            background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+          }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, color: 'var(--text-2)', cursor: 'pointer', fontWeight: 600 }}>
+              <input
+                type="checkbox"
+                checked={filteredProjects.length > 0 && selected.size === filteredProjects.length}
+                onChange={toggleSelectAll}
+                style={{ width: 15, height: 15, cursor: 'pointer' }}
+              />
+              {selected.size > 0 ? `${selected.size} selected` : 'Select all'}
+            </label>
+
+            <div style={{ flex: 1 }} />
+
+            {bulkProgress && (
+              <span style={{ fontSize: 12, color: 'var(--brand)', fontFamily: 'var(--font-mono)' }}>
+                Processing {bulkProgress.done}/{bulkProgress.total}...
+              </span>
+            )}
+
+            <button
+              onClick={bulkReevaluate}
+              disabled={selected.size === 0 || bulkBusy}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5,
+                padding: '6px 12px', borderRadius: 8, border: '1px solid var(--brand-bd)',
+                background: 'var(--brand-bg)', color: 'var(--brand)',
+                cursor: (selected.size === 0 || bulkBusy) ? 'not-allowed' : 'pointer',
+                fontSize: 12, fontWeight: 600,
+                opacity: (selected.size === 0 || bulkBusy) ? 0.5 : 1,
+              }}
+            >
+              <Zap size={12} /> Re-evaluate Selected
+            </button>
+
+            <button
+              onClick={bulkDelete}
+              disabled={selected.size === 0 || bulkBusy}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5,
+                padding: '6px 12px', borderRadius: 8, border: '1px solid var(--red-bd)',
+                background: 'var(--red-bg)', color: 'var(--red)',
+                cursor: (selected.size === 0 || bulkBusy) ? 'not-allowed' : 'pointer',
+                fontSize: 12, fontWeight: 600,
+                opacity: (selected.size === 0 || bulkBusy) ? 0.5 : 1,
+              }}
+            >
+              <Trash2 size={12} /> Delete Selected
+            </button>
+
+            <button
+              onClick={reevaluateAll}
+              disabled={filteredProjects.length === 0 || bulkBusy}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5,
+                padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border-hi)',
+                background: 'var(--bg-tertiary)', color: 'var(--text-2)',
+                cursor: (filteredProjects.length === 0 || bulkBusy) ? 'not-allowed' : 'pointer',
+                fontSize: 12, fontWeight: 600,
+                opacity: (filteredProjects.length === 0 || bulkBusy) ? 0.5 : 1,
+              }}
+            >
+              <RefreshCw size={12} /> Re-evaluate All Shown ({filteredProjects.length})
+            </button>
+          </div>
+
           {/* Project list */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {filteredProjects.map((p: any) => (
@@ -208,6 +371,13 @@ export default function AdminPage() {
                 borderRadius: 12, padding: '16px',
               }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+                  {/* Select checkbox */}
+                  <input
+                    type="checkbox"
+                    checked={selected.has(p.id)}
+                    onChange={() => toggleSelect(p.id)}
+                    style={{ width: 15, height: 15, marginTop: 12, cursor: 'pointer', flexShrink: 0 }}
+                  />
                   {/* Logo */}
                   <div style={{ width: 40, height: 40, borderRadius: 10, overflow: 'hidden', background: 'var(--bg-tertiary)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     {p.logo_url

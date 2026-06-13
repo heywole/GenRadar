@@ -20,8 +20,8 @@ export async function POST(req: NextRequest) {
     .from('projects').select('*').eq('id', project_id).single()
   if (!project) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  // Delete old score and mark processing
-  await supabase.from('ai_scores').delete().eq('project_id', project_id)
+  // Mark processing — KEEP the old score visible until the new one is ready
+  // (removing it early causes cards to flicker back to "AI Evaluating")
   await supabase.from('projects').update({ evaluation_status: 'processing' }).eq('id', project_id)
 
   try {

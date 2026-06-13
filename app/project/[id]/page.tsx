@@ -66,7 +66,7 @@ export default async function ProjectPage({ params }: { params: { id: string } }
     </div>
   )
 
-  const aiEvaluationPanel = <AIEvaluationPanel score={scoreRow} />
+  const aiEvaluationPanel = <AIEvaluationPanel score={scoreRow} project={project} />
 
   return (
     <>
