@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { submitProjectSchema } from '@/lib/validation'
 import { checkRateLimit } from '@/lib/rateLimit'
 
-export const maxDuration = 300
+export const maxDuration = 60
 export const dynamic = 'force-dynamic'
 
 export async function POST(req: NextRequest) {
@@ -34,22 +34,23 @@ export async function POST(req: NextRequest) {
   const { data: existing } = await supabase.from('projects').select('id').eq('website_url', p.website_url).maybeSingle()
   if (existing) return NextResponse.json({ error: 'A project with this URL already exists.' }, { status: 409 })
 
+  // Insert project as 'pending' — the database webhook will trigger the edge function
   const { data: project, error: insertErr } = await supabase
     .from('projects')
     .insert({
-      name:              p.name,
-      description:       p.description,
-      website_url:       p.website_url,
-      github_url:        p.github_url        || null,
-      twitter_url:       p.twitter_url       || null,
-      discord_url:       p.discord_url       || null,
-      telegram_url:      (p as any).telegram_url || null,
-      docs_url:          p.docs_url          || null,
-      category:          p.category,
-      logo_url:          p.logo_url          || null,
-      created_by:        user.id,
-      status:            'active',
-      evaluation_status: 'pending',
+      name:                p.name,
+      description:         p.description,
+      website_url:         p.website_url,
+      github_url:          p.github_url        || null,
+      twitter_url:         p.twitter_url       || null,
+      discord_url:         p.discord_url       || null,
+      telegram_url:        (p as any).telegram_url || null,
+      docs_url:            p.docs_url          || null,
+      category:            p.category,
+      logo_url:            p.logo_url          || null,
+      created_by:          user.id,
+      status:              'active',
+      evaluation_status:   'pending',   // webhook fires on INSERT with this value
       evaluation_attempts: 0,
     })
     .select().single()
@@ -59,65 +60,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to save project. Please try again.' }, { status: 500 })
   }
 
-  // Run evaluation synchronously — keeps the connection alive for the full maxDuration
-  try {
-    await supabase.from('projects').update({ evaluation_status: 'processing' }).eq('id', project.id)
-
-    const { evaluateProject } = await import('@/lib/genlayerAI')
-    const aiScore = await evaluateProject(p, project.id)
-
-    // Clean AI narrative — remove inaccurate social claims
-    const cleanedRisks = (aiScore.risks || []).filter((r: string) => {
-      const rl = r.toLowerCase()
-      if (project.twitter_url  && (rl.includes('twitter') || rl.includes('x account'))) return false
-      if (project.telegram_url && rl.includes('telegram'))  return false
-      if (project.discord_url  && rl.includes('discord'))   return false
-      if (project.github_url   && (rl.includes('github') || rl.includes('repository'))) return false
-      if (project.docs_url     && (rl.includes('documentation') || rl.includes('docs'))) return false
-      return true
-    })
-    const cleanedPositives = [...(aiScore.positives || [])]
-    if (project.twitter_url  && !cleanedPositives.some((x: string) => x.toLowerCase().includes('twitter')))  cleanedPositives.push('Twitter/X account is linked')
-    if (project.github_url   && !cleanedPositives.some((x: string) => x.toLowerCase().includes('github')))   cleanedPositives.push('Public GitHub repository is linked')
-    if (project.telegram_url && !cleanedPositives.some((x: string) => x.toLowerCase().includes('telegram'))) cleanedPositives.push('Telegram community is linked')
-    if (project.discord_url  && !cleanedPositives.some((x: string) => x.toLowerCase().includes('discord')))  cleanedPositives.push('Discord server is linked')
-
-    await supabase.from('ai_scores').insert({
-      project_id:         project.id,
-      score:              aiScore.score,
-      risk:               aiScore.risk,
-      confidence:         aiScore.confidence,
-      positives:          cleanedPositives.slice(0, 5),
-      risks:              cleanedRisks.slice(0, 5),
-      findings:           aiScore.findings        || [],
-      breakdown:          aiScore.breakdown        || null,
-      explanation:        aiScore.explanation      || null,
-      tx_hash:            aiScore.tx_hash          || null,
-      security_score:     aiScore.breakdown?.security     ?? null,
-      transparency_score: aiScore.breakdown?.transparency ?? null,
-      created_at:         new Date().toISOString(),
-    })
-
-    await supabase.from('projects').update({ evaluation_status: 'completed' }).eq('id', project.id)
-    console.log(`[submit] eval complete for ${project.id}: score=${aiScore.score}`)
-
-    return NextResponse.json({
-      success: true,
-      project,
-      score: aiScore.score,
-      message: 'Project submitted and evaluated successfully!',
-      remaining_submissions: remaining,
-    }, { status: 201 })
-
-  } catch (e: any) {
-    console.error('[submit] eval failed:', e.message)
-    await supabase.from('projects').update({ evaluation_status: 'failed', evaluation_attempts: 1 }).eq('id', project.id)
-    // Still return success for the project creation — evaluation failed but project is saved
-    return NextResponse.json({
-      success: true,
-      project,
-      message: 'Project submitted! AI evaluation is running — check back in a few minutes.',
-      remaining_submissions: remaining,
-    }, { status: 201 })
-  }
+  console.log(`[submit] project created: ${project.id} — webhook will trigger evaluation`)
+  return NextResponse.json({
+    success: true,
+    project,
+    message: 'Project submitted! AI evaluation starting...',
+    remaining_submissions: remaining,
+  }, { status: 201 })
 }

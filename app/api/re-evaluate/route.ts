@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { evaluateProject } from '@/lib/genlayerAI'
 
-export const maxDuration = 300  // 5 min — max allowed on Vercel Pro, 60s on hobby
+export const maxDuration = 60
 export const dynamic = 'force-dynamic'
 
 export async function POST(req: NextRequest) {
@@ -17,48 +16,18 @@ export async function POST(req: NextRequest) {
   )
 
   const { data: project } = await supabase
-    .from('projects').select('*').eq('id', project_id).single()
+    .from('projects').select('id').eq('id', project_id).single()
   if (!project) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  // Mark processing — KEEP the old score visible until the new one is ready
-  // (removing it early causes cards to flicker back to "AI Evaluating")
-  await supabase.from('projects').update({ evaluation_status: 'processing' }).eq('id', project_id)
+  // Set to 'pending' — this triggers the database webhook which calls the edge function
+  // The edge function does the actual GenLayer evaluation
+  const { error } = await supabase
+    .from('projects')
+    .update({ evaluation_status: 'pending' })
+    .eq('id', project_id)
 
-  try {
-    const aiScore = await evaluateProject({
-      name:         project.name,
-      description:  project.description ?? '',
-      website_url:  project.website_url ?? '',
-      github_url:   project.github_url  ?? '',
-      twitter_url:  project.twitter_url ?? '',
-      discord_url:  project.discord_url ?? '',
-      docs_url:     project.docs_url    ?? '',
-      telegram_url: project.telegram_url ?? '',
-      category:     project.category    ?? '',
-    }, project_id)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    await supabase.from('ai_scores').delete().eq('project_id', project_id)
-    await supabase.from('ai_scores').insert({
-      project_id,
-      score:              aiScore.score,
-      security_score:     aiScore.breakdown?.security     ?? null,
-      transparency_score: aiScore.breakdown?.transparency ?? null,
-      risk:               aiScore.risk,
-      confidence:         aiScore.confidence,
-      positives:          aiScore.positives    ?? [],
-      risks:              aiScore.risks         ?? [],
-      findings:           aiScore.findings     ?? [],
-      breakdown:          aiScore.breakdown    ?? null,
-      explanation:        aiScore.explanation  ?? null,
-      tx_hash:            aiScore.tx_hash      ?? null,
-      created_at:         new Date().toISOString(),
-    })
-    await supabase.from('projects').update({ evaluation_status: 'completed' }).eq('id', project_id)
-    console.log(`[re-evaluate] done: ${project_id} score=${aiScore.score}`)
-    return NextResponse.json({ success: true, score: aiScore.score })
-  } catch (err: any) {
-    console.error(`[re-evaluate] failed: ${err.message}`)
-    await supabase.from('projects').update({ evaluation_status: 'failed' }).eq('id', project_id)
-    return NextResponse.json({ error: err.message }, { status: 500 })
-  }
+  console.log(`[re-evaluate] set pending for ${project_id} — webhook will trigger edge function`)
+  return NextResponse.json({ success: true, message: 'Evaluation queued' })
 }
