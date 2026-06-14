@@ -71,61 +71,44 @@ export function ProjectCard({ project, showEditControls, onEdit, onDelete }: Pro
 
   async function fetchData() {
     try {
-      // Fetch directly from Supabase — same source as project detail page
-      const { data: scoreRows } = await supabase
-        .from('ai_scores')
-        .select('score, risk, confidence, positives, risks, findings, breakdown, explanation, tx_hash')
-        .eq('project_id', project.id)
-        .order('created_at', { ascending: false })
-        .limit(1)
+      // Fetch project + score from API (includes evaluation_status)
+      const res = await fetch(`/api/projects?id=${project.id}`)
+      const d   = await res.json()
+      const found = (d.projects ?? [])[0] ?? null
 
-      const scoreRow = scoreRows?.[0] ?? null
-      const score = scoreRow && Number(scoreRow.score) > 0 ? scoreRow : null
+      if (found) {
+        const evStatus = found.evaluation_status
+        const scoreRow = found.ai_score
+        const score    = scoreRow && Number(scoreRow.score) > 0 ? scoreRow : null
 
-      // If we were "evaluating", only clear it once the tx_hash actually changes
-      // (proves a NEW evaluation completed, not just the old score still sitting there)
-      if (evaluatingRef.current) {
-        const newTxHash: string | null = (score as any)?.tx_hash ?? null
-        const changed = newTxHash && newTxHash !== initialTxHash.current
-        if (changed) {
+        // Show "AI Evaluating" when DB says processing
+        if (evStatus === 'processing' || evStatus === 'pending') {
+          setEvaluating(true)
+        } else if (evStatus === 'completed' && evaluatingRef.current) {
+          // Evaluation just finished
           setEvaluating(false)
           clearEvaluating(project.id)
-          initialTxHash.current = newTxHash
+          initialTxHash.current = (score as any)?.tx_hash ?? null
         }
+
+        setLiveScore(score)
+        setLiveViews(found._count?.views ?? liveViews)
+        setLiveSaves(found._count?.saves ?? liveSaves)
+        setUpvotes(found._votes?.up ?? upvotes)
+        return !!score
       }
-
-      setLiveScore(score)
-
-      // Fetch view and save counts
-      const { data: ints } = await supabase
-        .from('interactions')
-        .select('type')
-        .eq('project_id', project.id)
-      let views = 0, saves = 0
-      for (const i of ints || []) {
-        if (i.type === 'view') views++
-        if (i.type === 'save') saves++
-      }
-      setLiveViews(views)
-      setLiveSaves(saves)
-
-      // Fetch vote count
-      const { data: votes } = await supabase
-        .from('votes')
-        .select('vote_type')
-        .eq('project_id', project.id)
-      const up = (votes || []).filter((v: any) => v.vote_type === 'up').length
-      setUpvotes(up)
-
-      return !!score
-    } catch { return false }
+      return false
+    } catch {
+      return false
+    }
   }
 
   function startPolling() {
     if (timerRef.current) return // already polling
     timerRef.current = setInterval(async () => {
       await fetchData()
-      if (!isEvaluating(project.id)) stopPolling()
+      // Stop polling once evaluation_status = completed (fetchData handles that)
+      if (!evaluatingRef.current) stopPolling()
     }, 4000)
   }
 
@@ -138,8 +121,10 @@ export function ProjectCard({ project, showEditControls, onEdit, onDelete }: Pro
 
   useEffect(() => {
     // Fetch immediately on mount
-    fetchData().then(hasScore => {
-      if (!hasScore || isEvaluating(project.id)) startPolling()
+    fetchData().then(() => {
+      // fetchData sets evaluatingRef if DB shows processing/pending
+      // startPolling if already evaluating or no score yet
+      if (evaluatingRef.current || !liveScore) startPolling()
     })
 
     // Listen for evaluation-started events (from re-evaluate button / admin bulk actions)
@@ -155,11 +140,20 @@ export function ProjectCard({ project, showEditControls, onEdit, onDelete }: Pro
       const found = (e.detail?.projects || []).find((p: any) => p.id === project.id)
       if (!found) return
       const score = found.ai_score && Number(found.ai_score.score) > 0 ? found.ai_score : null
+      const evStatus = found.evaluation_status
+
+      if (evStatus === 'processing' || evStatus === 'pending') {
+        setEvaluating(true)
+        startPolling()
+      } else if (evStatus === 'completed' && evaluatingRef.current) {
+        setEvaluating(false)
+        clearEvaluating(project.id)
+      }
+
       setLiveScore(score)
       setLiveViews(found._count?.views ?? 0)
       setLiveSaves(found._count?.saves ?? 0)
       setUpvotes(found._votes?.up ?? 0)
-      if (!score) { startPolling() } else { stopPolling(); fetchData() }
     }
 
     function handleVoteUpdate(e: any) {

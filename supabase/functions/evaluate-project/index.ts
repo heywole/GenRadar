@@ -171,6 +171,8 @@ Deno.serve(async (req) => {
     console.log(`[edge] scanning ${project.name}...`)
     const signals = await scan(project)
     console.log(`[edge] scan done. goplus=${signals.goplus_flagged} safebrowsing=${signals.safe_browsing_flagged} ssl=${signals.ssl_valid}`)
+    console.log(`[edge] SOCIAL SIGNALS — github=${signals.has_github} docs=${signals.has_docs} twitter=${signals.has_twitter} telegram=${signals.has_telegram} discord=${signals.has_discord}`)
+    console.log(`[edge] PROJECT URLS — github_url=${project.github_url} twitter_url=${project.twitter_url} docs_url=${project.docs_url} telegram_url=${project.telegram_url} discord_url=${project.discord_url}`)
 
     // Send signals to GenLayer contract
     const { createClient: glCreateClient } = await import('https://esm.sh/genlayer-js@0.9.3')
@@ -189,8 +191,25 @@ Deno.serve(async (req) => {
         project.description     ?? '',
         project.website_url     ?? '',
         project.github_url      ?? '',
+        project.twitter_url     ?? '',
+        project.telegram_url    ?? '',
+        project.discord_url     ?? '',
+        project.docs_url        ?? '',
         project.category        ?? '',
-        JSON.stringify(signals),
+        JSON.stringify({
+          // Security scan results — these are backend-verified facts
+          goplus_flagged:         signals.goplus_flagged,
+          safe_browsing_flagged:  signals.safe_browsing_flagged,
+          scamsniffer_flagged:    signals.scamsniffer_flagged,
+          phishing_detected:      signals.phishing_detected,
+          unsafe_wallet_behavior: signals.unsafe_wallet_behavior,
+          has_honeypot_patterns:  signals.has_honeypot_patterns,
+          suspicious_scripts:     signals.suspicious_scripts,
+          ssl_valid:              signals.ssl_valid,
+          website_unreachable:    signals.website_unreachable,
+          github_summary:         signals.github_summary,
+          website_preview:        (signals.website_preview || '').slice(0, 300),
+        }),
       ],
     })
 
@@ -211,11 +230,11 @@ Deno.serve(async (req) => {
     try { evalData = JSON.parse(result) } catch {}
 
     const score      = evalData.score              ?? 0
-    const secScore   = evalData.security_score     ?? 0
-    const transScore = evalData.transparency_score ?? 0
+    const secScore   = evalData.security_score     ?? evalData.breakdown?.security     ?? 0
+    const transScore = evalData.transparency_score ?? evalData.breakdown?.transparency ?? 0
     const risk       = evalData.risk               ?? (score >= 75 ? 'Low' : score >= 50 ? 'Medium' : 'High')
 
-    // Save score to DB — upsert avoids a window with no score row (prevents card flicker)
+    // Save score to DB
     await supabase.from('ai_scores').upsert({
       project_id,
       score,

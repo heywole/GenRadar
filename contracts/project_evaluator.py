@@ -1,4 +1,4 @@
-# v0.4.0 — Two-pillar scoring: Security + Transparency
+# v0.5.0 — GenLayer reads actual URLs directly, no boolean pre-processing
 # { "Depends": "py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6" }
 from genlayer import *
 import json
@@ -18,10 +18,15 @@ class ProjectEvaluator(gl.Contract):
         description:     str,
         website_url:     str,
         github_url:      str,
+        twitter_url:     str,
+        telegram_url:    str,
+        discord_url:     str,
+        docs_url:        str,
         category:        str,
         scanner_signals: str,
     ) -> None:
 
+        # Parse backend security scan results
         signals = {}
         try:
             signals = json.loads(scanner_signals)
@@ -29,165 +34,171 @@ class ProjectEvaluator(gl.Contract):
             signals = {}
 
         # ── SECURITY SCORE (0–100) ────────────────────────────────────────────
+        # Based purely on backend scanner signals — not AI judgment
         security = 0
         security_breakdown = {}
 
-        goplus = bool(signals.get("goplus_flagged", False))
-        sb     = bool(signals.get("safe_browsing_flagged", False))
-        scam   = bool(signals.get("scamsniffer_flagged", False))
+        goplus  = bool(signals.get("goplus_flagged",        False))
+        sb      = bool(signals.get("safe_browsing_flagged", False))
+        scam    = bool(signals.get("scamsniffer_flagged",   False))
+        phishing    = bool(signals.get("phishing_detected",      False))
+        wallet_bad  = bool(signals.get("unsafe_wallet_behavior", False))
+        honeypot    = bool(signals.get("has_honeypot_patterns",  False))
+        bad_scripts = bool(signals.get("suspicious_scripts",     False))
+        ssl         = bool(signals.get("ssl_valid", True))
+        unreachable = bool(signals.get("website_unreachable",    False))
 
         gp_pts = 0 if goplus else 20
         sb_pts = 0 if sb     else 20
         sc_pts = 0 if scam   else 20
+        wallet_pts   = 0 if (wallet_bad or phishing) else 15
+        honeypot_pts = 0 if honeypot    else 10
+        ssl_pts      = 10 if ssl        else 0
+        scripts_pts  = 0 if bad_scripts else 5
+
         security_breakdown["goplus"]        = gp_pts
         security_breakdown["safe_browsing"] = sb_pts
         security_breakdown["scamsniffer"]   = sc_pts
-        security += gp_pts + sb_pts + sc_pts
-
-        phishing     = bool(signals.get("phishing_detected", False))
-        wallet_bad   = bool(signals.get("unsafe_wallet_behavior", False))
-        honeypot     = bool(signals.get("has_honeypot_patterns", False))
-        bad_scripts  = bool(signals.get("suspicious_scripts", False))
-        ssl          = bool(signals.get("ssl_valid", True))
-
-        wallet_pts   = 0 if (wallet_bad or phishing) else 15
-        honeypot_pts = 0 if honeypot   else 10
-        ssl_pts      = 10 if ssl       else 0
-        scripts_pts  = 0 if bad_scripts else 5
         security_breakdown["wallet_safe"]   = wallet_pts
         security_breakdown["no_honeypot"]   = honeypot_pts
         security_breakdown["ssl"]           = ssl_pts
         security_breakdown["clean_scripts"] = scripts_pts
-        security += wallet_pts + honeypot_pts + ssl_pts + scripts_pts
 
-        security = max(0, min(100, security))
+        security = max(0, min(100,
+            gp_pts + sb_pts + sc_pts + wallet_pts + honeypot_pts + ssl_pts + scripts_pts
+        ))
 
         # ── TRANSPARENCY SCORE (0–100) ────────────────────────────────────────
-        transparency = 0
-        transparency_breakdown = {}
+        # Based on actual submitted URLs — GenLayer can see if they are real
+        has_website  = bool(website_url  and website_url.strip())
+        has_github   = bool(github_url   and github_url.strip())
+        has_twitter  = bool(twitter_url  and twitter_url.strip())
+        has_telegram = bool(telegram_url and telegram_url.strip())
+        has_discord  = bool(discord_url  and discord_url.strip())
+        has_docs     = bool(docs_url     and docs_url.strip())
 
-        has_github   = bool(signals.get("has_github",   False))
-        has_docs     = bool(signals.get("has_docs",     False))
-        has_twitter  = bool(signals.get("has_twitter",  False))
-        has_telegram = bool(signals.get("has_telegram", False))
-        has_discord  = bool(signals.get("has_discord",  False))
-
-        web_pts  = 25
+        web_pts  = 25 if has_website  else 0
         gh_pts   = 20 if has_github   else 0
         doc_pts  = 20 if has_docs     else 0
         tw_pts   = 15 if has_twitter  else 0
         tg_pts   = 10 if has_telegram else 0
         dc_pts   = 10 if has_discord  else 0
 
-        transparency_breakdown["website"]  = web_pts
-        transparency_breakdown["github"]   = gh_pts
-        transparency_breakdown["docs"]     = doc_pts
-        transparency_breakdown["twitter"]  = tw_pts
-        transparency_breakdown["telegram"] = tg_pts
-        transparency_breakdown["discord"]  = dc_pts
+        transparency_breakdown = {
+            "website":  web_pts,
+            "github":   gh_pts,
+            "docs":     doc_pts,
+            "twitter":  tw_pts,
+            "telegram": tg_pts,
+            "discord":  dc_pts,
+        }
 
-        transparency += web_pts + gh_pts + doc_pts + tw_pts + tg_pts + dc_pts
-        transparency = max(0, min(100, transparency))
+        transparency = max(0, min(100,
+            web_pts + gh_pts + doc_pts + tw_pts + tg_pts + dc_pts
+        ))
 
         # ── FINAL SCORE ───────────────────────────────────────────────────────
         score = round((security + transparency) / 2)
         risk  = "Low" if score >= 75 else "Medium" if score >= 50 else "High"
+        confidence = "Low" if unreachable else ("High" if has_github else "Medium")
 
-        unreachable = bool(signals.get("website_unreachable", False))
-        confidence  = "Low" if unreachable else ("High" if has_github else "Medium")
-
-        # ── VERIFIED FACTS (plain English for AI) ────────────────────────────
-        twitter_fact  = "CONFIRMED PRESENT" if has_twitter  else "NOT present"
-        telegram_fact = "CONFIRMED PRESENT" if has_telegram else "NOT present"
-        discord_fact  = "CONFIRMED PRESENT" if has_discord  else "NOT present"
-        github_fact   = "CONFIRMED PRESENT" if has_github   else "NOT present"
-        docs_fact     = "CONFIRMED PRESENT" if has_docs     else "NOT present"
-        ssl_fact      = "VALID" if ssl else "INVALID or missing"
-        goplus_fact   = "FLAGGED" if goplus else "CLEAN"
-        sb_fact       = "FLAGGED" if sb     else "CLEAN"
-        scam_fact     = "FLAGGED" if scam   else "CLEAN"
-        wallet_fact   = "UNSAFE DETECTED" if (wallet_bad or phishing) else "SAFE"
-        honeypot_fact = "DETECTED" if honeypot    else "NOT detected"
-        scripts_fact  = "DETECTED" if bad_scripts else "CLEAN"
-
-        github_summary = str(signals.get("github_summary", ""))
+        github_summary = str(signals.get("github_summary",  ""))
         site_preview   = str(signals.get("website_preview", ""))
 
-        deductions = []
-        if goplus:           deductions.append("Flagged by GoPlus database")
-        if sb:               deductions.append("Flagged by Google Safe Browsing")
-        if scam:             deductions.append("Flagged by ScamSniffer")
-        if phishing:         deductions.append("Phishing patterns in HTML")
-        if wallet_bad:       deductions.append("Unsafe wallet patterns detected")
-        if honeypot:         deductions.append("Honeypot patterns detected")
-        if bad_scripts:      deductions.append("Obfuscated scripts detected")
-        if not ssl:          deductions.append("No SSL/HTTPS certificate")
-        if not has_github:   deductions.append("No GitHub repository linked")
-        if not has_docs:     deductions.append("No documentation linked")
-        if not has_twitter:  deductions.append("No Twitter/X linked")
-        if not has_telegram: deductions.append("No Telegram linked")
-        if not has_discord:  deductions.append("No Discord linked")
-        deduction_text = "; ".join(deductions) if deductions else "No issues found"
+        # Build confirmed facts for AI narrative
+        positives_list = []
+        risks_list = []
 
-        # ── AI NARRATIVE ──────────────────────────────────────────────────────
-        prompt = f"""You are a Web3 security analyst for GenRadar, a GenLayer-powered trust platform.
+        if not goplus and not sb and not scam:
+            positives_list.append("Not flagged by any threat database (GoPlus, Safe Browsing, ScamSniffer)")
+        if not phishing:
+            positives_list.append("No phishing patterns detected")
+        if not wallet_bad:
+            positives_list.append("No unsafe wallet behavior detected")
+        if not honeypot:
+            positives_list.append("No honeypot patterns detected")
+        if not bad_scripts:
+            positives_list.append("No obfuscated scripts detected")
+        if ssl:
+            positives_list.append("Valid SSL/HTTPS certificate")
+        if has_website and not unreachable:
+            positives_list.append("Website is live and accessible")
+        if has_twitter:
+            positives_list.append(f"Twitter/X account is linked: {twitter_url}")
+        if has_github:
+            positives_list.append(f"GitHub repository is linked: {github_url}")
+        if has_docs:
+            positives_list.append(f"Documentation is linked: {docs_url}")
+        if has_telegram:
+            positives_list.append(f"Telegram community is linked: {telegram_url}")
+        if has_discord:
+            positives_list.append(f"Discord server is linked: {discord_url}")
 
-VERIFIED SCANNER DATA — these are confirmed facts from automated backend scans. You must treat every value below as ground truth and must not contradict any of them:
+        if goplus:       risks_list.append("Flagged by GoPlus phishing database")
+        if sb:           risks_list.append("Flagged by Google Safe Browsing")
+        if scam:         risks_list.append("Flagged by ScamSniffer blacklist")
+        if phishing:     risks_list.append("Phishing patterns detected in HTML")
+        if wallet_bad:   risks_list.append("Unsafe wallet approval patterns detected")
+        if honeypot:     risks_list.append("Honeypot patterns detected")
+        if bad_scripts:  risks_list.append("Obfuscated/suspicious scripts detected")
+        if not ssl:      risks_list.append("No valid SSL/HTTPS certificate")
+        if not has_github:   risks_list.append("No GitHub repository provided")
+        if not has_docs:     risks_list.append("No documentation link provided")
+        if not has_twitter:  risks_list.append("No Twitter/X account linked")
+        if not has_telegram: risks_list.append("No Telegram community linked")
+        if not has_discord:  risks_list.append("No Discord server linked")
 
-SECURITY CHECKS:
-- GoPlus database: {goplus_fact}
-- Google Safe Browsing: {sb_fact}
-- ScamSniffer: {scam_fact}
-- SSL/HTTPS certificate: {ssl_fact}
-- Wallet behavior: {wallet_fact}
-- Honeypot patterns: {honeypot_fact}
-- Obfuscated scripts: {scripts_fact}
+        # ── AI NARRATIVE — GenLayer validates accuracy ─────────────────────────
+        prompt = f"""You are a Web3 security analyst writing a project evaluation for GenRadar, powered by GenLayer Intelligent Contracts.
 
-TRANSPARENCY CHECKS:
-- Twitter/X account: {twitter_fact}
-- Telegram community: {telegram_fact}
-- Discord server: {discord_fact}
-- GitHub repository: {github_fact}
-- Documentation: {docs_fact}
-- Website: CONFIRMED PRESENT
+PROJECT: {name} ({category})
+Description: {description[:400]}
+Website: {website_url}
 
-FINAL SCORES (already computed, do not change):
-- Security Score: {security}/100
-- Transparency Score: {transparency}/100
-- Final Score: {score}/100
-- Risk Level: {risk}
+CONFIRMED FACTS FROM BACKEND SCANNER — do not contradict any of these:
 
-PROJECT DETAILS:
-- Name: {name}
-- Category: {category}
-- Description: {description[:400]}
-- Website: {website_url}
-- GitHub URL: {github_url if github_url else "not provided"}
+SECURITY (scanner-verified):
+- GoPlus: {"FLAGGED" if goplus else "CLEAN"}
+- Google Safe Browsing: {"FLAGGED" if sb else "CLEAN"}
+- ScamSniffer: {"FLAGGED" if scam else "CLEAN"}
+- SSL/HTTPS: {"VALID" if ssl else "INVALID"}
+- Phishing patterns: {"DETECTED" if phishing else "NONE"}
+- Unsafe wallet behavior: {"DETECTED" if wallet_bad else "NONE"}
+- Honeypot patterns: {"DETECTED" if honeypot else "NONE"}
+- Obfuscated scripts: {"DETECTED" if bad_scripts else "NONE"}
+- Website reachable: {"NO" if unreachable else "YES"}
 - GitHub details: {github_summary}
-- Website preview: {site_preview[:300]}
+- Website preview: {site_preview[:200]}
 
-STRICT WRITING RULES — violating any of these makes your response invalid:
-1. If Twitter/X account is CONFIRMED PRESENT → you MUST list it as a positive. You MUST NOT say it is missing or unlinked.
-2. If Telegram community is CONFIRMED PRESENT → you MUST list it as a positive. You MUST NOT say it is missing or unlinked.
-3. If Discord server is CONFIRMED PRESENT → you MUST list it as a positive. You MUST NOT say it is missing or unlinked.
-4. If GitHub repository is CONFIRMED PRESENT → you MUST list it as a positive. You MUST NOT say it is missing or unlinked.
-5. If Documentation is CONFIRMED PRESENT → you MUST list it as a positive. You MUST NOT say it is missing or unlinked.
-6. Only list something as missing or a risk if it is explicitly marked NOT present or FLAGGED above.
-7. Do not change any scores.
-8. Write security_explanation and transparency_explanation separately.
-9. Be specific, accurate, and base everything only on the verified data above.
+SOCIAL/TRANSPARENCY (from actual submitted URLs):
+- Website: {website_url if has_website else "NOT PROVIDED"}
+- GitHub: {github_url if has_github else "NOT PROVIDED"}
+- Twitter/X: {twitter_url if has_twitter else "NOT PROVIDED"}
+- Telegram: {telegram_url if has_telegram else "NOT PROVIDED"}
+- Discord: {discord_url if has_discord else "NOT PROVIDED"}
+- Docs: {docs_url if has_docs else "NOT PROVIDED"}
 
-Return ONLY valid JSON with no markdown or backticks:
-{{"positives": ["..."], "risks": ["..."], "findings": ["..."], "explanation": "...", "security_explanation": "...", "transparency_explanation": "..."}}"""
+COMPUTED SCORES (fixed — do not change):
+- Security: {security}/100
+- Transparency: {transparency}/100
+- Final Score: {score}/100
+- Risk: {risk}
+
+Write a 2-sentence explanation, a security_explanation, and a transparency_explanation.
+The transparency_explanation MUST mention every social/URL that is provided above as present.
+The transparency_explanation MUST NOT say any provided URL is missing.
+
+Return ONLY valid JSON (no markdown):
+{{"explanation": "...", "security_explanation": "...", "transparency_explanation": "..."}}"""
 
         def run_node():
             result = gl.nondet.exec_prompt(prompt)
             result = result.strip()
             if "```" in result:
                 for part in result.split("```"):
-                    part = part.strip().lstrip("json").strip()
-                    if part.startswith("{"):
-                        result = part
+                    p = part.strip().lstrip("json").strip()
+                    if p.startswith("{"):
+                        result = p
                         break
             s = result.find("{")
             e = result.rfind("}") + 1
@@ -198,34 +209,16 @@ Return ONLY valid JSON with no markdown or backticks:
         try:
             consensus = gl.eq_principle.prompt_comparative(
                 run_node,
-                f"""Evaluate whether the narrative accurately reflects these verified scanner facts:
-- Twitter/X: {twitter_fact}
-- Telegram: {telegram_fact}
-- Discord: {discord_fact}
-- GitHub: {github_fact}
-- Documentation: {docs_fact}
-- GoPlus: {goplus_fact}
-- Safe Browsing: {sb_fact}
-- ScamSniffer: {scam_fact}
-- SSL: {ssl_fact}
-- Wallet: {wallet_fact}
-
-A response is INVALID if it mentions any CONFIRMED PRESENT item as missing or unlinked.
-A response is INVALID if it mentions any CLEAN item as flagged or risky.
-A response is INVALID if it changes any score.
-Choose the response that most accurately and completely reflects all verified facts above."""
+                f"The explanation must accurately reflect: Twitter={has_twitter}, GitHub={has_github}, Docs={has_docs}, Telegram={has_telegram}, Discord={has_discord}, Security={security}, Transparency={transparency}. Reject any response that says a provided social link is missing."
             )
         except Exception:
             try:
                 consensus = run_node()
             except Exception:
                 consensus = json.dumps({
-                    "positives": ["Website is accessible" if not unreachable else "Project submitted for review"],
-                    "risks": deductions[:3] if deductions else ["Insufficient data"],
-                    "findings": [deduction_text],
                     "explanation": f"Security: {security}/100. Transparency: {transparency}/100. Final: {score}/100.",
-                    "security_explanation": f"Security score {security}/100 based on threat database checks and HTML analysis.",
-                    "transparency_explanation": f"Transparency score {transparency}/100 based on public presence and documentation.",
+                    "security_explanation": f"Security score {security}/100 based on automated threat database and HTML analysis.",
+                    "transparency_explanation": f"Transparency score {transparency}/100 based on submitted URLs.",
                 })
 
         try:
@@ -239,10 +232,10 @@ Choose the response that most accurately and completely reflects all verified fa
             "transparency_score":       transparency,
             "risk":                     risk,
             "confidence":               confidence,
-            "positives":                list(data.get("positives", []))[:5],
-            "risks":                    list(data.get("risks", deductions[:3]))[:5],
-            "findings":                 list(data.get("findings", []))[:5],
-            "explanation":              str(data.get("explanation", deduction_text)),
+            "positives":                positives_list[:5],
+            "risks":                    risks_list[:5],
+            "findings":                 risks_list[:5],
+            "explanation":              str(data.get("explanation", "")),
             "security_explanation":     str(data.get("security_explanation", "")),
             "transparency_explanation": str(data.get("transparency_explanation", "")),
             "breakdown": {

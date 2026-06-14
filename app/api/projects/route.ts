@@ -10,6 +10,7 @@ export async function GET(req: NextRequest) {
   const category = searchParams.get('category') || ''
   const search   = searchParams.get('search')   || ''
   const risk     = searchParams.get('risk')      || ''
+  const singleId = searchParams.get('id')        || ''
 
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -20,12 +21,15 @@ export async function GET(req: NextRequest) {
   try {
     let query = supabase
       .from('projects')
-      .select('id, name, description, website_url, github_url, twitter_url, discord_url, telegram_url, docs_url, category, logo_url, created_at, status')
+      .select('id, name, description, website_url, github_url, twitter_url, discord_url, telegram_url, docs_url, category, logo_url, created_at, status, evaluation_status')
       .eq('status', 'active')
-      .limit(limit)
+      .limit(singleId ? 1 : limit)
 
-    if (category && category !== 'All') query = query.eq('category', category)
-    if (search) query = query.ilike('name', `%${search}%`)
+    if (singleId) query = query.eq('id', singleId)
+    else {
+      if (category && category !== 'All') query = query.eq('category', category)
+      if (search) query = query.ilike('name', `%${search}%`)
+    }
 
     const { data: projects, error: pErr } = await query
     if (pErr) return NextResponse.json({ projects: [] })
@@ -81,9 +85,10 @@ export async function GET(req: NextRequest) {
 
     let result = projects.map(p => ({
       ...p,
-      ai_score: scoreMap[p.id] ?? null,
-      _count:   countMap[p.id] ?? { views: 0, saves: 0, reports: 0 },
-      _votes:   voteMap[p.id]  ?? { up: 0, down: 0 },
+      ai_score:          scoreMap[p.id] ?? null,
+      _count:            countMap[p.id] ?? { views: 0, saves: 0, reports: 0 },
+      _votes:            voteMap[p.id]  ?? { up: 0, down: 0 },
+      evaluation_status: p.evaluation_status ?? null,
     }))
 
     if (sort === 'score')  result.sort((a, b) => (b.ai_score?.score ?? -1) - (a.ai_score?.score ?? -1))
