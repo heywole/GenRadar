@@ -81,14 +81,14 @@ export function ProjectCard({ project, showEditControls, onEdit, onDelete }: Pro
         const scoreRow = found.ai_score
         const score    = scoreRow && Number(scoreRow.score) > 0 ? scoreRow : null
 
-        // Show "AI Evaluating" when DB says processing
-        if (evStatus === 'processing' || evStatus === 'pending') {
+        // Only show "AI Evaluating" if processing/pending AND no existing score
+        // If score exists, keep showing it even during re-evaluation
+        if ((evStatus === 'processing' || evStatus === 'pending') && !score) {
           setEvaluating(true)
-        } else if (evStatus === 'completed' && evaluatingRef.current) {
-          // Evaluation just finished
+        } else if (evStatus === 'completed' || (score && evStatus !== 'pending')) {
+          // Has score OR completed — show it
           setEvaluating(false)
           clearEvaluating(project.id)
-          initialTxHash.current = (score as any)?.tx_hash ?? null
         }
 
         setLiveScore(score)

@@ -21,18 +21,22 @@ function trustLabel(risk: string) {
 }
 
 interface Props {
-  projectId:         string
-  initialScore:      any
+  projectId:          string
+  initialScore:       any
   initialEvalStatus?: string | null
-  onSeeMore?:        () => void
+  onSeeMore?:         () => void
 }
 
 export function ProjectScorePanel({ projectId, initialScore, initialEvalStatus, onSeeMore }: Props) {
-  const hasInitialScore  = !!(initialScore && Number(initialScore.score) > 0)
-  const isInitiallyEval  = initialEvalStatus === 'processing' || initialEvalStatus === 'pending'
+  const hasInitialScore = !!(initialScore && Number(initialScore.score) > 0)
+
+  // Only show evaluating spinner if status is processing/pending AND no score yet
+  const isInitiallyEvaluating = (
+    (initialEvalStatus === 'processing' || initialEvalStatus === 'pending') && !hasInitialScore
+  )
 
   const [score,      setScore]      = useState<any>(hasInitialScore ? initialScore : null)
-  const [evaluating, setEvaluating] = useState(isInitiallyEval || !hasInitialScore)
+  const [evaluating, setEvaluating] = useState(isInitiallyEvaluating)
   const evaluatingRef               = useRef(evaluating)
   evaluatingRef.current             = evaluating
   const timerRef                    = useRef<NodeJS.Timeout | null>(null)
@@ -48,7 +52,8 @@ export function ProjectScorePanel({ projectId, initialScore, initialEvalStatus, 
       const row      = proj.ai_score
       const hasScore = !!(row && Number(row.score) > 0)
 
-      if (evStatus === 'completed' && hasScore) {
+      if (hasScore) {
+        // Always show score if we have one
         setScore(row)
         setEvaluating(false)
         stopPolling()
@@ -71,17 +76,15 @@ export function ProjectScorePanel({ projectId, initialScore, initialEvalStatus, 
   }
 
   useEffect(() => {
-    // Start polling immediately if evaluating
-    if (evaluating) startPolling()
+    if (evaluating || !score) startPolling()
 
-    // Also listen for re-evaluate events triggered from this page (admin, re-eval button)
     function handleEvalStart(e: any) {
       if (e.detail?.projectId !== projectId) return
-      setEvaluating(true)
+      // Only show evaluating if no score yet
+      if (!score) setEvaluating(true)
       startPolling()
     }
     window.addEventListener('evaluation-started', handleEvalStart)
-
     return () => {
       stopPolling()
       window.removeEventListener('evaluation-started', handleEvalStart)
@@ -114,7 +117,6 @@ export function ProjectScorePanel({ projectId, initialScore, initialEvalStatus, 
 
   return (
     <div style={{ background: 'var(--bg-secondary)', borderRadius: 16, overflow: 'hidden', border: '1px solid var(--border)' }}>
-      {/* Score circle */}
       <div style={{ padding: '20px', textAlign: 'center', borderBottom: '1px solid var(--border)' }}>
         <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 14, fontFamily: 'var(--font-mono)' }}>AI Trust Score</p>
         <div style={{ position: 'relative', width: 80, height: 80, margin: '0 auto 14px' }}>
@@ -129,7 +131,7 @@ export function ProjectScorePanel({ projectId, initialScore, initialEvalStatus, 
           </div>
         </div>
         {rc && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, marginBottom: 8 }}>
             <span style={{ padding: '4px 12px', borderRadius: 999, fontSize: 12, fontWeight: 700, background: rc.bg, color: rc.c, border: `1px solid ${rc.bd}` }}>
               Trust: <strong>{trustLabel(ai.risk)}</strong>
             </span>
@@ -138,12 +140,9 @@ export function ProjectScorePanel({ projectId, initialScore, initialEvalStatus, 
             </span>
           </div>
         )}
-        <p style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>
-          Confidence: {ai.confidence ?? 'Medium'}
-        </p>
+        <p style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>Confidence: {ai.confidence ?? 'Medium'}</p>
       </div>
 
-      {/* GenLayer TX */}
       <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)', background: 'var(--blue-bg)' }}>
         <a href={explorerUrl} target="_blank" rel="noopener noreferrer"
           style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--blue)', textDecoration: 'none', fontFamily: 'var(--font-mono)' }}>
@@ -180,7 +179,6 @@ export function ProjectScorePanel({ projectId, initialScore, initialEvalStatus, 
             background: 'var(--brand-bg)', border: '1px solid var(--brand-bd)',
             color: 'var(--brand)', borderRadius: 8, padding: '7px 16px',
             fontSize: 12, fontWeight: 700, cursor: 'pointer', width: '100%',
-            fontFamily: 'var(--font-sans)',
           }}>
             See Full AI Evaluation →
           </button>
