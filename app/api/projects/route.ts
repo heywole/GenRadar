@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { checkEvaluation } from '@/lib/runEvaluation'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,9 +20,33 @@ export async function GET(req: NextRequest) {
   )
 
   try {
+    // Opportunistic check: every open project card/page already polls this
+    // endpoint every few seconds. If this project is "processing", piggyback
+    // a single GenLayer check on that poll instead of depending solely on a
+    // cron job to notice. Rate-limited via evaluation_last_polled_at so
+    // concurrent viewers don't hammer the RPC.
+    if (singleId) {
+      try {
+        const { data: cur } = await supabase
+          .from('projects')
+          .select('evaluation_status, evaluation_last_polled_at')
+          .eq('id', singleId)
+          .maybeSingle()
+
+        if (cur?.evaluation_status === 'processing') {
+          const lastPolled = cur.evaluation_last_polled_at ? new Date(cur.evaluation_last_polled_at).getTime() : 0
+          if (Date.now() - lastPolled > 8000) {
+            await checkEvaluation(singleId)
+          }
+        }
+      } catch (e: any) {
+        console.warn('[api/projects] opportunistic poll failed:', e?.message)
+      }
+    }
+
     let query = supabase
       .from('projects')
-      .select('id, name, description, website_url, github_url, twitter_url, discord_url, telegram_url, docs_url, category, logo_url, created_at, status, evaluation_status')
+      .select('id, name, description, website_url, github_url, twitter_url, discord_url, telegram_url, docs_url, category, logo_url, created_at, status, evaluation_status, evaluation_error')
       .eq('status', 'active')
       .limit(singleId ? 1 : limit)
 
@@ -46,7 +71,6 @@ export async function GET(req: NextRequest) {
 
     if (sErr) console.error('[api/projects] ai_scores error:', sErr.message)
 
-    // Pick the most recent score per project (first = most recent due to order above)
     const scoreMap: Record<string, any> = {}
     for (const s of scores || []) {
       if (!scoreMap[s.project_id]) {
@@ -54,7 +78,6 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Interaction counts
     const { data: ints } = await supabase
       .from('interactions')
       .select('project_id, type')
@@ -69,7 +92,6 @@ export async function GET(req: NextRequest) {
       if (type === 'report') countMap[project_id].reports++
     }
 
-    // Vote counts
     const { data: votes } = await supabase
       .from('votes')
       .select('project_id, vote_type')
@@ -89,6 +111,7 @@ export async function GET(req: NextRequest) {
       _count:            countMap[p.id] ?? { views: 0, saves: 0, reports: 0 },
       _votes:            voteMap[p.id]  ?? { up: 0, down: 0 },
       evaluation_status: p.evaluation_status ?? null,
+      evaluation_error:  p.evaluation_error  ?? null,
     }))
 
     if (sort === 'score')  result.sort((a, b) => (b.ai_score?.score ?? -1) - (a.ai_score?.score ?? -1))

@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { startEvaluation } from '@/lib/runEvaluation'
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60
 
 const ADMIN_EMAILS = ['wolegold247@gmail.com']
 
@@ -109,18 +111,14 @@ export async function POST(req: NextRequest) {
   }
 
   if (action === 're-evaluate') {
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://genradar.vercel.app'
-    try {
-      const res = await fetch(`${baseUrl}/api/re-evaluate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ project_id }),
-      })
-      const d = await res.json()
-      return NextResponse.json(d)
-    } catch (e: any) {
-      return NextResponse.json({ error: e.message }, { status: 500 })
-    }
+    // Was: an HTTP fetch from this serverless function back to its own
+    // public URL (/api/re-evaluate). That hop silently breaks whenever
+    // NEXT_PUBLIC_APP_URL doesn't exactly match the live deployment URL,
+    // and gave no real error back to the admin panel. Now it calls the
+    // same evaluation logic directly, in-process.
+    const result = await startEvaluation(project_id)
+    if ('error' in result) return NextResponse.json({ error: result.error }, { status: 502 })
+    return NextResponse.json({ success: true, message: 'Submitted to GenLayer — waiting for validators.' })
   }
 
   return NextResponse.json({ error: 'Unknown action' }, { status: 400 })

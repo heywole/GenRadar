@@ -198,7 +198,17 @@ export default function ProfilePage() {
     try { sessionStorage.removeItem('score_' + editProject.id) } catch {}
     // Tell all cards this project was updated
     window.dispatchEvent(new CustomEvent('evaluation-started', { detail: { projectId: editProject.id } }))
-    fetch('/api/re-evaluate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project_id: editProject.id }) }).catch(() => {})
+    const { data: { session } } = await supabase.auth.getSession()
+    fetch('/api/re-evaluate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+      body: JSON.stringify({ project_id: editProject.id }),
+    }).then(async r => {
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}))
+        alert(`Saved, but re-evaluation could not be submitted to GenLayer: ${d.error || 'unknown error'}. You can try "Save & Re-evaluate" again.`)
+      }
+    }).catch(() => {})
     setSaving(false); setEditProject(null); fetchProjects('submitted')
   }
 

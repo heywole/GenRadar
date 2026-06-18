@@ -52,14 +52,19 @@ export function ProjectScorePanel({ projectId, initialScore, initialEvalStatus, 
       const row      = proj.ai_score
       const hasScore = !!(row && Number(row.score) > 0)
 
-      if (hasScore) {
-        // Always show score if we have one
+      // Status always wins over a possibly-stale score row. Checking
+      // processing/pending FIRST (instead of "do we have any score at all")
+      // stops this from showing a leftover score as final while a fresh
+      // re-evaluation is still running on the server.
+      if (evStatus === 'processing' || evStatus === 'pending') {
+        setEvaluating(true)
+      } else if (hasScore) {
         setScore(row)
         setEvaluating(false)
         stopPolling()
-      } else if (evStatus === 'processing' || evStatus === 'pending') {
-        setEvaluating(true)
-      } else if (evStatus === 'failed') {
+      } else {
+        // completed/failed with no score — GenLayer never returned one,
+        // so there's nothing real to show.
         setEvaluating(false)
         stopPolling()
       }

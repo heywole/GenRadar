@@ -31,16 +31,25 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  // Was completely open — anyone could spam arbitrary categories with no
+  // login at all. Now requires a signed-in user, same as everything else
+  // that writes to the database.
+  const token = req.headers.get('Authorization')?.replace('Bearer ', '')
+  if (!token) return NextResponse.json({ error: 'Sign in required' }, { status: 401 })
+
   try {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { global: { headers: { Authorization: `Bearer ${token}` } }, auth: { persistSession: false } }
+    )
+    const { data: { user } } = await supabase.auth.getUser(token)
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
     const { name } = await req.json()
     if (!name || name.length < 2 || name.length > 30) {
       return NextResponse.json({ error: 'Invalid category name' }, { status: 400 })
     }
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      { auth: { persistSession: false } }
-    )
     await supabase.from('custom_categories').upsert({ name: name.trim() }, { onConflict: 'name' })
     return NextResponse.json({ success: true })
   } catch (e: any) {

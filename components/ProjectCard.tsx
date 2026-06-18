@@ -81,12 +81,14 @@ export function ProjectCard({ project, showEditControls, onEdit, onDelete }: Pro
         const scoreRow = found.ai_score
         const score    = scoreRow && Number(scoreRow.score) > 0 ? scoreRow : null
 
-        // Only show "AI Evaluating" if processing/pending AND no existing score
-        // If score exists, keep showing it even during re-evaluation
-        if ((evStatus === 'processing' || evStatus === 'pending') && !score) {
+        // Status always wins over a possibly-stale score. Previously a
+        // leftover score from before a re-evaluation could make this think
+        // the (stale) result was final while GenLayer was still working —
+        // that's what caused the card to flicker between "evaluating" and
+        // an old score. Now: still processing/pending → always evaluating.
+        if (evStatus === 'processing' || evStatus === 'pending') {
           setEvaluating(true)
-        } else if (evStatus === 'completed' || (score && evStatus !== 'pending')) {
-          // Has score OR completed — show it
+        } else {
           setEvaluating(false)
           clearEvaluating(project.id)
         }

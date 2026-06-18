@@ -2,14 +2,18 @@
 // ================================================================
 // scripts/deploy-contract.js
 //
-// Deploys contracts/project_evaluator.py to GenLayer Testnet Bradbury
-// using the official genlayer-js SDK and GenLayer CLI.
+// Deploys contracts/project_evaluator.py to whichever GenLayer network
+// GENLAYER_NETWORK in .env.local points to (defaults to studionet —
+// must match whatever GENLAYER_NETWORK is set to in your live Vercel
+// deployment, or the app will be calling a contract address that
+// doesn't exist on the network it's actually talking to).
 //
 // Usage: npm run contract:deploy
 //
 // What you need first:
 //   1. A wallet private key in .env.local as GENLAYER_PRIVATE_KEY
-//   2. Testnet GEN tokens from https://studio.genlayer.com (Faucet tab)
+//   2. Testnet GEN tokens for whatever network you're deploying to
+//      (https://studio.genlayer.com → Faucet tab for studionet)
 //   3. npm install already run (genlayer-js must be installed)
 // ================================================================
 
@@ -29,6 +33,25 @@ if (fs.existsSync(envPath)) {
     const val = trimmed.slice(eqIdx + 1).trim()
     if (key && !process.env[key]) process.env[key] = val
   }
+}
+
+// Same alias map as lib/genlayerAI.ts — keep these in sync. genlayer-js
+// 1.x exports: localnet, studionet, testnetAsimov, testnetBradbury.
+// A plain "testnet" export does NOT exist — using it here used to
+// silently fall back to localnet (127.0.0.1), which is only reachable
+// from your own machine, never from a deployed site.
+const NETWORK_ALIASES = {
+  studionet:          'studionet',
+  localnet:           'localnet',
+  testnet:            'testnetBradbury',
+  'testnet-asimov':   'testnetAsimov',
+  testnetasimov:      'testnetAsimov',
+  'testnet-bradbury': 'testnetBradbury',
+  testnetbradbury:    'testnetBradbury',
+}
+
+function resolveNetworkKey() {
+  return (process.env.GENLAYER_NETWORK || 'studionet').trim().toLowerCase()
 }
 
 async function deploy() {
@@ -52,17 +75,27 @@ async function deploy() {
     ? privateKeyRaw
     : `0x${privateKeyRaw}`
 
-  console.log('\n🚀 Deploying ProjectEvaluator to GenLayer Testnet Bradbury...\n')
+  const networkKey = resolveNetworkKey()
+  const chains      = require('genlayer-js/chains')
+  const exportName  = NETWORK_ALIASES[networkKey]
+  const chain        = exportName ? chains[exportName] : undefined
+
+  if (!chain) {
+    console.error(`\n❌ Unknown GENLAYER_NETWORK "${process.env.GENLAYER_NETWORK}".`)
+    console.error(`   Valid values: studionet, testnet-asimov, testnet-bradbury, localnet.\n`)
+    process.exit(1)
+  }
+
+  console.log(`\n🚀 Deploying ProjectEvaluator to GenLayer (${networkKey})...\n`)
   console.log('   Contract: contracts/project_evaluator.py')
-  console.log('   Network:  Testnet Bradbury (https://rpc.testnet.genlayer.com)\n')
+  console.log(`   Network:  ${exportName}\n`)
 
   try {
     const { createClient, createAccount } = require('genlayer-js')
-    const { testnet }                      = require('genlayer-js/chains')
     const contractCode = fs.readFileSync(contractPath, 'utf8')
 
     const account = createAccount(privateKey)
-    const client  = createClient({ chain: testnet, account })
+    const client  = createClient({ chain, account })
 
     console.log('📡 Sending deployment transaction...')
 
@@ -98,7 +131,9 @@ async function deploy() {
     console.log('\n✅ Contract deployed successfully!\n')
     console.log(`📋 Contract Address: ${contractAddress}\n`)
 
-    // Auto-write to .env.local
+    // Auto-write the new address to .env.local. We deliberately do NOT
+    // touch GENLAYER_NETWORK here — it stays whatever you already have it
+    // set to, since that's what decides which network this just deployed to.
     let envContent = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : ''
 
     if (envContent.includes('GENLAYER_CONTRACT_ADDRESS=')) {
@@ -112,17 +147,20 @@ async function deploy() {
 
     fs.writeFileSync(envPath, envContent)
     console.log('✅ GENLAYER_CONTRACT_ADDRESS saved to .env.local automatically\n')
+    console.log('⚠️  IMPORTANT: also update GENLAYER_CONTRACT_ADDRESS in your Vercel project')
+    console.log('   (Settings → Environment Variables, Production) — .env.local only')
+    console.log('   affects your own machine, not the live site.\n')
     console.log('👉 Now restart your dev server:  npm run dev\n')
 
   } catch (err) {
     console.error('\n❌ Deployment failed:\n')
     console.error(err.message || err)
     console.log('\n── Troubleshooting ──────────────────────────────────────')
-    console.log('  1. Make sure you have testnet GEN tokens:')
+    console.log('  1. Make sure you have testnet GEN tokens for this network')
     console.log('     → https://studio.genlayer.com → Faucet tab')
     console.log('  2. Make sure GENLAYER_PRIVATE_KEY starts with 0x')
     console.log('  3. Make sure you ran "npm install" first')
-    console.log('  4. Check testnet status: https://docs.genlayer.com/developers/networks')
+    console.log('  4. Check network status: https://docs.genlayer.com/developers/networks')
     console.log('─────────────────────────────────────────────────────────\n')
     process.exit(1)
   }

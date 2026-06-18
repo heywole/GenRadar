@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { submitProjectSchema } from '@/lib/validation'
 import { checkRateLimit } from '@/lib/rateLimit'
+import { startEvaluation } from '@/lib/runEvaluation'
 
 export const maxDuration = 60
 export const dynamic = 'force-dynamic'
@@ -34,7 +35,6 @@ export async function POST(req: NextRequest) {
   const { data: existing } = await supabase.from('projects').select('id').eq('website_url', p.website_url).maybeSingle()
   if (existing) return NextResponse.json({ error: 'A project with this URL already exists.' }, { status: 409 })
 
-  // Insert project as 'pending' — the database webhook will trigger the edge function
   const { data: project, error: insertErr } = await supabase
     .from('projects')
     .insert({
@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
       logo_url:            p.logo_url          || null,
       created_by:          user.id,
       status:              'active',
-      evaluation_status:   'pending',   // webhook fires on INSERT with this value
+      evaluation_status:   'pending',
       evaluation_attempts: 0,
     })
     .select().single()
@@ -60,11 +60,26 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to save project. Please try again.' }, { status: 500 })
   }
 
-  console.log(`[submit] project created: ${project.id} — webhook will trigger evaluation`)
+  // Submit straight to GenLayer now, instead of waiting on a webhook/cron
+  // that might not be configured or might not fire in time. This call only
+  // does the scan + tx-send (a few seconds) — it does not wait for a score.
+  let evalMessage = 'Project submitted! AI evaluation starting...'
+  try {
+    const result = await startEvaluation(project.id)
+    if ('error' in result) {
+      console.error(`[submit] evaluation failed to start for ${project.id}: ${result.error}`)
+      evalMessage = 'Project submitted. AI evaluation could not be started automatically — an admin can trigger Re-evaluate.'
+    }
+  } catch (e: any) {
+    console.error(`[submit] evaluation threw for ${project.id}:`, e?.message || e)
+    evalMessage = 'Project submitted. AI evaluation could not be started automatically — an admin can trigger Re-evaluate.'
+  }
+
+  console.log(`[submit] project created: ${project.id}`)
   return NextResponse.json({
     success: true,
     project,
-    message: 'Project submitted! AI evaluation starting...',
+    message: evalMessage,
     remaining_submissions: remaining,
   }, { status: 201 })
 }

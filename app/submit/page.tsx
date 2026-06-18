@@ -253,7 +253,11 @@ export default function SubmitPage() {
                   const name = customCategory.trim()
                   if (!name || name.length < 2) return
                   // Save to DB and add to list
-                  await fetch('/api/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) })
+                  await fetch('/api/categories', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+                    body: JSON.stringify({ name }),
+                  })
                   setCategories(prev => {
                     const withoutOther = prev.filter(c => c !== 'Other')
                     if (withoutOther.includes(name)) return prev
