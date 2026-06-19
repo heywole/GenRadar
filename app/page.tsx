@@ -102,11 +102,13 @@ function AIScanner() {
           : 'https://explorer-studio.genlayer.com/txs',
         delay: 6100,
       },
-      { text: `> Validator 1 (GPT-4o): score=${score}, risk=${risk} ✓`,       color: '#22C55E', delay: 7200 },
-      { text: `> Validator 2 (Claude): score=${score}, risk=${risk} ✓`,        color: '#22C55E', delay: 8000 },
-      { text: `> Validator 3 (Llama 3): score=${score}, risk=${risk} ✓`,       color: '#22C55E', delay: 8700 },
-      { text: `> Consensus reached. Final score: ${score}/100  Risk: ${risk}`, color: '#22C55E', delay: 9400, bold: true },
-      { text: `✓ "${name}" evaluated on GenLayer network.`,                    color: '#22C55E', delay: 10100, bold: true },
+      { text: `> Validator 1: score=${score}, risk=${risk} ✓`, color: '#22C55E', delay: 7000 },
+      { text: `> Validator 2: score=${score}, risk=${risk} ✓`, color: '#22C55E', delay: 7600 },
+      { text: `> Validator 3: score=${score}, risk=${risk} ✓`, color: '#22C55E', delay: 8200 },
+      { text: `> Validator 4: score=${score}, risk=${risk} ✓`, color: '#22C55E', delay: 8800 },
+      { text: `> Validator 5: score=${score}, risk=${risk} ✓`, color: '#22C55E', delay: 9400 },
+      { text: `> Consensus reached. Final score: ${score}/100  Risk: ${risk}`, color: '#22C55E', delay: 10100, bold: true },
+      { text: `✓ "${name}" evaluated on GenLayer network.`,                    color: '#22C55E', delay: 10800, bold: true },
     ]
   }
 

@@ -3,6 +3,26 @@ import { createClient } from '@supabase/supabase-js'
 import { checkEvaluation } from '@/lib/runEvaluation'
 
 export const dynamic = 'force-dynamic'
+export const revalidate = 0
+export const fetchCache = 'force-no-store'
+
+// Every response from this route goes through here. The bug that caused
+// some viewers (and even the same person on multiple devices, since it
+// depends on which Vercel edge region/CDN node serves the request, not
+// the browser) to see an old, frozen project list was a few early-return
+// paths below that didn't set no-cache headers — leaving the door open
+// for a CDN edge node to cache a "stale" or "empty" response and keep
+// serving it to anyone routed through that same node, regardless of how
+// many times the real browser's local cache gets cleared.
+function noCacheJson(body: unknown, status = 200) {
+  const res = NextResponse.json(body, { status })
+  res.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+  res.headers.set('CDN-Cache-Control', 'no-store')
+  res.headers.set('Vercel-CDN-Cache-Control', 'no-store')
+  res.headers.set('Pragma', 'no-cache')
+  res.headers.set('Expires', '0')
+  return res
+}
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
@@ -33,8 +53,8 @@ export async function GET(req: NextRequest) {
     }
 
     const { data: projects, error: pErr } = await query
-    if (pErr) return NextResponse.json({ projects: [] })
-    if (!projects || projects.length === 0) return NextResponse.json({ projects: [] })
+    if (pErr) return noCacheJson({ projects: [] })
+    if (!projects || projects.length === 0) return noCacheJson({ projects: [] })
 
     // Opportunistic check: every page that lists or shows projects (Explore,
     // Home, Admin, a single project page) hits this endpoint. Previously
@@ -116,11 +136,10 @@ export async function GET(req: NextRequest) {
     if (sort === 'views')  result.sort((a, b) => b._count.views - a._count.views)
     if (risk && risk !== 'All') result = result.filter(p => p.ai_score?.risk === risk)
 
-    const response = NextResponse.json({ projects: result })
-    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate')
+    const response = noCacheJson({ projects: result })
     return response
   } catch (err: any) {
     console.error('[api/projects] crash:', err.message)
-    return NextResponse.json({ projects: [] })
+    return noCacheJson({ projects: [] })
   }
 }
