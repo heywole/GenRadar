@@ -407,12 +407,31 @@ export default function AdminPage() {
                     <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 4 }}>
                       {new Date(p.created_at).toLocaleDateString()} · {p.website_url}
                     </div>
-                    {p.ai_score?.tx_hash && (
+                    {p.evaluation_status && p.evaluation_status !== 'completed' && (
+                      <div style={{ marginBottom: 4 }}>
+                        <Badge
+                          text={`eval: ${p.evaluation_status}`}
+                          color={p.evaluation_status === 'failed' ? 'var(--red)' : 'var(--yellow)'}
+                          bg={p.evaluation_status === 'failed' ? 'var(--red-bg)' : 'var(--yellow-bg)'}
+                        />
+                      </div>
+                    )}
+                    {p.evaluation_error && (
+                      <div style={{ fontSize: 11, color: 'var(--red)', marginBottom: 4, maxWidth: 480 }}>
+                        ⚠ {p.evaluation_error}
+                      </div>
+                    )}
+                    {p.ai_score?.tx_hash ? (
                       <a href={`https://explorer-studio.genlayer.com/tx/${p.ai_score.tx_hash}`} target="_blank" rel="noopener noreferrer"
                         style={{ fontSize: 11, color: 'var(--blue)', fontFamily: 'var(--font-mono)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                        <ExternalLink size={10} /> TX: {p.ai_score.tx_hash.slice(0, 12)}...
+                        <ExternalLink size={10} /> TX (completed): {p.ai_score.tx_hash.slice(0, 12)}...
                       </a>
-                    )}
+                    ) : p.evaluation_tx_hash ? (
+                      <a href={`https://explorer-studio.genlayer.com/tx/${p.evaluation_tx_hash}`} target="_blank" rel="noopener noreferrer"
+                        style={{ fontSize: 11, color: 'var(--blue)', fontFamily: 'var(--font-mono)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <ExternalLink size={10} /> TX (waiting for consensus): {p.evaluation_tx_hash.slice(0, 12)}...
+                      </a>
+                    ) : null}
                   </div>
 
                   {/* Actions */}

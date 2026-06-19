@@ -41,6 +41,25 @@ export function ProjectScorePanel({ projectId, initialScore, initialEvalStatus, 
   evaluatingRef.current             = evaluating
   const timerRef                    = useRef<NodeJS.Timeout | null>(null)
 
+  // CRITICAL FIX: this component used to copy initialScore/initialEvalStatus
+  // into local state only on first mount. Since the project page refreshes
+  // its server data every few seconds (ProjectPageAutoRefresh → router.refresh()),
+  // new props DO arrive here — but React doesn't re-run useState's initializer
+  // on prop changes, so this was silently ignoring every update and showing
+  // whatever score existed at the moment this component first mounted, even
+  // while a brand new re-evaluation was running on the server. This effect
+  // makes it actually react to fresh props, the same way AIEvaluationPanel
+  // (which has no internal state) already did correctly.
+  useEffect(() => {
+    const freshHasScore = !!(initialScore && Number(initialScore.score) > 0)
+    if (initialEvalStatus === 'processing' || initialEvalStatus === 'pending') {
+      setEvaluating(true)
+    } else {
+      setEvaluating(false)
+      setScore(freshHasScore ? initialScore : null)
+    }
+  }, [initialScore, initialEvalStatus])
+
   async function checkStatus() {
     try {
       const res  = await fetch(`/api/projects?id=${projectId}`)
@@ -55,18 +74,21 @@ export function ProjectScorePanel({ projectId, initialScore, initialEvalStatus, 
       // Status always wins over a possibly-stale score row. Checking
       // processing/pending FIRST (instead of "do we have any score at all")
       // stops this from showing a leftover score as final while a fresh
-      // re-evaluation is still running on the server.
+      // re-evaluation is still running on the server. Polling is never
+      // stopped here on purpose — this panel can stay open for a long time
+      // and a NEW re-evaluation could start at any point from a different
+      // page (e.g. the admin panel), so it has to keep checking forever,
+      // not just until the first result comes in.
       if (evStatus === 'processing' || evStatus === 'pending') {
         setEvaluating(true)
       } else if (hasScore) {
         setScore(row)
         setEvaluating(false)
-        stopPolling()
       } else {
         // completed/failed with no score — GenLayer never returned one,
-        // so there's nothing real to show.
+        // so there's nothing real to show. Keep polling anyway (cheap) in
+        // case a re-evaluation gets triggered later from another page.
         setEvaluating(false)
-        stopPolling()
       }
     } catch {}
   }
@@ -81,12 +103,18 @@ export function ProjectScorePanel({ projectId, initialScore, initialEvalStatus, 
   }
 
   useEffect(() => {
-    if (evaluating || !score) startPolling()
+    // Always check immediately and keep polling for as long as this panel
+    // is on screen — never go fully idle. A re-evaluation can be triggered
+    // from a completely different page (the admin panel), so this can't
+    // rely on a same-page event to know something changed; only continuous
+    // polling guarantees this self-corrects within one cycle either way.
+    checkStatus()
+    startPolling()
 
     function handleEvalStart(e: any) {
       if (e.detail?.projectId !== projectId) return
-      // Only show evaluating if no score yet
-      if (!score) setEvaluating(true)
+      setScore(null)
+      setEvaluating(true)
       startPolling()
     }
     window.addEventListener('evaluation-started', handleEvalStart)

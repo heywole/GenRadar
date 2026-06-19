@@ -107,11 +107,7 @@ export function ProjectCard({ project, showEditControls, onEdit, onDelete }: Pro
 
   function startPolling() {
     if (timerRef.current) return // already polling
-    timerRef.current = setInterval(async () => {
-      await fetchData()
-      // Stop polling once evaluation_status = completed (fetchData handles that)
-      if (!evaluatingRef.current) stopPolling()
-    }, 4000)
+    timerRef.current = setInterval(fetchData, 4000)
   }
 
   function stopPolling() {
@@ -122,12 +118,12 @@ export function ProjectCard({ project, showEditControls, onEdit, onDelete }: Pro
   }
 
   useEffect(() => {
-    // Fetch immediately on mount
-    fetchData().then(() => {
-      // fetchData sets evaluatingRef if DB shows processing/pending
-      // startPolling if already evaluating or no score yet
-      if (evaluatingRef.current || !liveScore) startPolling()
-    })
+    // Fetch immediately on mount, then keep polling forever while this
+    // card is on screen — never go fully idle. A re-evaluation can be
+    // triggered from a completely different page (the admin panel), so
+    // this card has no other way to learn about it except by continuing
+    // to check, even after it already has a settled score.
+    fetchData().then(() => startPolling())
 
     // Listen for evaluation-started events (from re-evaluate button / admin bulk actions)
     function handleEvalStart(e: any) {
