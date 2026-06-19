@@ -20,33 +20,9 @@ export async function GET(req: NextRequest) {
   )
 
   try {
-    // Opportunistic check: every open project card/page already polls this
-    // endpoint every few seconds. If this project is "processing", piggyback
-    // a single GenLayer check on that poll instead of depending solely on a
-    // cron job to notice. Rate-limited via evaluation_last_polled_at so
-    // concurrent viewers don't hammer the RPC.
-    if (singleId) {
-      try {
-        const { data: cur } = await supabase
-          .from('projects')
-          .select('evaluation_status, evaluation_last_polled_at')
-          .eq('id', singleId)
-          .maybeSingle()
-
-        if (cur?.evaluation_status === 'processing') {
-          const lastPolled = cur.evaluation_last_polled_at ? new Date(cur.evaluation_last_polled_at).getTime() : 0
-          if (Date.now() - lastPolled > 8000) {
-            await checkEvaluation(singleId)
-          }
-        }
-      } catch (e: any) {
-        console.warn('[api/projects] opportunistic poll failed:', e?.message)
-      }
-    }
-
     let query = supabase
       .from('projects')
-      .select('id, name, description, website_url, github_url, twitter_url, discord_url, telegram_url, docs_url, category, logo_url, created_at, status, evaluation_status, evaluation_error')
+      .select('id, name, description, website_url, github_url, twitter_url, discord_url, telegram_url, docs_url, category, logo_url, created_at, status, evaluation_status, evaluation_error, evaluation_last_polled_at')
       .eq('status', 'active')
       .limit(singleId ? 1 : limit)
 
@@ -59,6 +35,27 @@ export async function GET(req: NextRequest) {
     const { data: projects, error: pErr } = await query
     if (pErr) return NextResponse.json({ projects: [] })
     if (!projects || projects.length === 0) return NextResponse.json({ projects: [] })
+
+    // Opportunistic check: every page that lists or shows projects (Explore,
+    // Home, Admin, a single project page) hits this endpoint. Previously
+    // only a single-project fetch (?id=) ever triggered a real GenLayer
+    // check — so a project sitting in "processing" was never actually
+    // looked up again unless someone happened to open its own page. Now
+    // ANY fetch through here checks a few "processing" projects (rate-
+    // limited via evaluation_last_polled_at so concurrent viewers don't
+    // hammer the RPC), so the result lands no matter which page caught it.
+    try {
+      const cutoff = Date.now() - 8000
+      const due = projects
+        .filter(p => p.evaluation_status === 'processing')
+        .filter(p => !p.evaluation_last_polled_at || new Date(p.evaluation_last_polled_at).getTime() < cutoff)
+        .slice(0, 3)
+      if (due.length > 0) {
+        await Promise.all(due.map(p => checkEvaluation(p.id)))
+      }
+    } catch (e: any) {
+      console.warn('[api/projects] opportunistic poll failed:', e?.message)
+    }
 
     const ids = projects.map(p => p.id)
 

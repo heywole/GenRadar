@@ -34,7 +34,7 @@ export function Sidebar({ session: initialSession }: Props) {
       } catch {}
     }
     loadStats()
-    const id = setInterval(loadStats, 30000)
+    const id = setInterval(loadStats, 10000)
     return () => clearInterval(id)
   }, [])
 

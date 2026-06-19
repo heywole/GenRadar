@@ -36,6 +36,26 @@ export async function GET(req: NextRequest) {
 
   const supabase = serviceClient()
 
+  // Same self-healing check as /api/projects: loading the admin panel is
+  // itself a reason to actually go ask GenLayer whether any "processing"
+  // project has a result ready yet, instead of only ever checking when
+  // someone happens to open that one project's public page.
+  try {
+    const { checkEvaluation } = await import('@/lib/runEvaluation')
+    const cutoff = new Date(Date.now() - 8000).toISOString()
+    const { data: due } = await supabase
+      .from('projects')
+      .select('id')
+      .eq('evaluation_status', 'processing')
+      .or(`evaluation_last_polled_at.is.null,evaluation_last_polled_at.lt.${cutoff}`)
+      .limit(5)
+    if (due && due.length > 0) {
+      await Promise.all(due.map(p => checkEvaluation(p.id)))
+    }
+  } catch (e: any) {
+    console.warn('[admin] opportunistic poll failed:', e?.message)
+  }
+
   const [
     { data: projects, error: pErr },
     { data: scores },
