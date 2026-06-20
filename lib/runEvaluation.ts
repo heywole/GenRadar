@@ -57,10 +57,19 @@ export async function startEvaluation(projectId: string): Promise<StartResult> {
       category:     project.category     ?? '',
     }, projectId)
 
-    await supabase.from('projects').update({
+    const { error: saveErr } = await supabase.from('projects').update({
       evaluation_tx_hash:  txHash,
       last_scan_signals:   signals,
     }).eq('id', projectId)
+
+    if (saveErr) {
+      // Submission to GenLayer genuinely succeeded — don't mark this as
+      // failed, the evaluation is still in flight on-chain. But log loudly,
+      // since this means the scanner signals for this run will be missing
+      // later, most likely because a required column doesn't exist yet.
+      console.error(`[runEvaluation] tx ${txHash} submitted OK, but saving tx_hash/signals failed for ${projectId}: ${saveErr.message}`)
+    }
+
     console.log(`[runEvaluation] submitted ${projectId} tx=${txHash}`)
     return { started: true }
   } catch (err: any) {
@@ -116,7 +125,7 @@ export async function checkEvaluation(
     return 'waiting'
   }
 
-  await supabase.from('ai_scores').insert({
+  const { error: insertErr } = await supabase.from('ai_scores').insert({
     project_id:               projectId,
     score:                    result.score,
     security_score:           result.breakdown?.security     ?? null,
@@ -134,6 +143,18 @@ export async function checkEvaluation(
     scanner_signals:          project.last_scan_signals  ?? null,
     created_at:                new Date().toISOString(),
   })
+
+  if (insertErr) {
+    // GenLayer genuinely returned a real result — losing it here would be
+    // worse than never showing it, so surface this loudly rather than
+    // quietly marking the project completed with nothing actually saved.
+    console.error(`[runEvaluation] GOT a real result for ${projectId} but saving it failed: ${insertErr.message}`)
+    await supabase.from('projects').update({
+      evaluation_status: 'failed',
+      evaluation_error:  `GenLayer returned a result but saving it failed: ${insertErr.message}`.slice(0, 500),
+    }).eq('id', projectId)
+    return 'failed'
+  }
 
   await supabase.from('projects').update({
     evaluation_status: 'completed',
