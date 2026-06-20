@@ -80,6 +80,22 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // Restored: a builder profile is only meaningful once someone has
+  // actually submitted a project — without this, anyone could fill in a
+  // profile with no project behind it at all.
+  const { count: projectCount } = await supabase
+    .from('projects')
+    .select('id', { count: 'exact', head: true })
+    .eq('created_by', user.id)
+    .eq('status', 'active')
+
+  if (!projectCount || projectCount < 1) {
+    return NextResponse.json(
+      { error: 'Submit a project first before setting up your builder profile.' },
+      { status: 403 }
+    )
+  }
+
   const body = await req.json()
   const { bio, twitter_url, telegram_url, github_url, discord_url, website_url, other_links, avatar_url, country } = body
 

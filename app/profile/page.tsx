@@ -42,6 +42,7 @@ export default function ProfilePage() {
   const [avatarPreview,   setAvatarPreview]   = useState<string | null>(null)
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const [showEmail,       setShowEmail]       = useState(false)
+  const [mySubmittedCount, setMySubmittedCount] = useState<number | null>(null)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -64,6 +65,7 @@ export default function ProfilePage() {
     try {
       const res  = await fetch(`/api/builder-profile?user_id=${user.id}`)
       const data = await res.json()
+      setMySubmittedCount(data?.stats?.totalProjects ?? 0)
       if (data.profile) {
         setBuilderProfile(data.profile)
         setBuilderForm({
@@ -108,11 +110,17 @@ export default function ProfilePage() {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) return
     const avatarUrl = await uploadAvatar(user.id)
-    await fetch('/api/builder-profile', {
+    const res = await fetch('/api/builder-profile', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
       body: JSON.stringify({ ...builderForm, avatar_url: avatarUrl }),
     })
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}))
+      alert(d.error || 'Could not save builder profile.')
+      setSavingBuilder(false)
+      return
+    }
     setSavingBuilder(false); setBuilderSaved(true); setShowBuilderForm(false)
     setAvatarFile(null); setAvatarPreview(null)
     loadBuilderProfile()
@@ -297,7 +305,19 @@ export default function ProfilePage() {
       </div>
 
       {/* Builder profile form */}
-      {showBuilderForm && (
+      {showBuilderForm && mySubmittedCount === 0 && (
+        <div style={{ marginBottom: 28, padding: '24px', background: 'var(--bg-secondary)', borderRadius: 14, border: '1px solid var(--border-hi)', textAlign: 'center' }}>
+          <Package size={22} color="var(--text-3)" style={{ marginBottom: 10 }} />
+          <h3 style={{ fontWeight: 700, fontSize: 15, color: 'var(--text-1)', margin: '0 0 6px' }}>Submit a project first</h3>
+          <p style={{ fontSize: 13, color: 'var(--text-3)', margin: '0 0 18px', maxWidth: 360, marginLeft: 'auto', marginRight: 'auto' }}>
+            Your builder profile is tied to your work on GenRadar — submit at least one project before setting one up.
+          </p>
+          <button onClick={() => router.push('/submit')} style={{ padding: '10px 20px', background: 'var(--text-1)', color: 'var(--bg)', border: 'none', borderRadius: 9, cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>
+            Submit a Project
+          </button>
+        </div>
+      )}
+      {showBuilderForm && mySubmittedCount !== null && mySubmittedCount > 0 && (
         <div style={{ marginBottom: 28, padding: '24px', background: 'var(--bg-secondary)', borderRadius: 14, border: '1px solid var(--border-hi)' }}>
           <h3 style={{ fontWeight: 700, fontSize: 15, color: 'var(--text-1)', margin: '0 0 4px' }}>Builder Profile</h3>
           <p style={{ fontSize: 12, color: 'var(--text-3)', margin: '0 0 20px' }}>Your public identity on GenRadar. Visible on all your project pages and the Builders directory.</p>

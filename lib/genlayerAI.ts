@@ -79,7 +79,7 @@ type ProjectInput = SubmitProjectPayload & {
   docs_url?:     string
 }
 
-async function buildSignalPayload(project: ProjectInput): Promise<string> {
+async function buildSignalPayload(project: ProjectInput): Promise<{ payload: string; signals: ScannerSignals }> {
   let signals: ScannerSignals
   try {
     signals = await scanProject(
@@ -113,7 +113,7 @@ async function buildSignalPayload(project: ProjectInput): Promise<string> {
     }
   }
 
-  return JSON.stringify({
+  const payload = JSON.stringify({
     website_unreachable:    signals.website_unreachable,
     phishing_detected:      signals.phishing_detected,
     suspicious_scripts:     signals.suspicious_scripts,
@@ -130,6 +130,8 @@ async function buildSignalPayload(project: ProjectInput): Promise<string> {
     scamsniffer_flagged:    signals.scamsniffer_flagged,
     ssl_valid:              signals.ssl_valid,
   })
+
+  return { payload, signals }
 }
 
 /**
@@ -141,13 +143,13 @@ async function buildSignalPayload(project: ProjectInput): Promise<string> {
  * Throws on any real failure (bad config, tx rejected, etc) — callers
  * must NOT catch this and substitute a fake score.
  */
-export async function submitEvaluation(project: ProjectInput, projectId: string): Promise<{ txHash: string }> {
+export async function submitEvaluation(project: ProjectInput, projectId: string): Promise<{ txHash: string; signals: ScannerSignals }> {
   const contractAddr = getContractAddress()
   const client        = await getClient()
 
   console.log(`[GenLayer] submitting project=${projectId} contract=${contractAddr} network=${resolveNetworkKey()}`)
 
-  const signalPayload = await buildSignalPayload(project)
+  const { payload: signalPayload, signals } = await buildSignalPayload(project)
 
   try {
     const txHash = await client.writeContract({
@@ -169,7 +171,7 @@ export async function submitEvaluation(project: ProjectInput, projectId: string)
       value: BigInt(0),
     })
     console.log(`[GenLayer] tx submitted for ${projectId}: ${txHash}`)
-    return { txHash: txHash as string }
+    return { txHash: txHash as string, signals }
   } catch (e: any) {
     const message = e?.message || e?.shortMessage || 'unknown error'
     console.error(`[GenLayer] writeContract failed for ${projectId}:`, message)

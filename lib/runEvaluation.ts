@@ -45,7 +45,7 @@ export async function startEvaluation(projectId: string): Promise<StartResult> {
   }).eq('id', projectId)
 
   try {
-    const { txHash } = await submitEvaluation({
+    const { txHash, signals } = await submitEvaluation({
       name:         project.name,
       description:  project.description  ?? '',
       website_url:  project.website_url  ?? '',
@@ -57,7 +57,10 @@ export async function startEvaluation(projectId: string): Promise<StartResult> {
       category:     project.category     ?? '',
     }, projectId)
 
-    await supabase.from('projects').update({ evaluation_tx_hash: txHash }).eq('id', projectId)
+    await supabase.from('projects').update({
+      evaluation_tx_hash:  txHash,
+      last_scan_signals:   signals,
+    }).eq('id', projectId)
     console.log(`[runEvaluation] submitted ${projectId} tx=${txHash}`)
     return { started: true }
   } catch (err: any) {
@@ -128,6 +131,7 @@ export async function checkEvaluation(
     security_explanation:      (result as any).security_explanation     ?? null,
     transparency_explanation:  (result as any).transparency_explanation ?? null,
     tx_hash:                  project.evaluation_tx_hash ?? null,
+    scanner_signals:          project.last_scan_signals  ?? null,
     created_at:                new Date().toISOString(),
   })
 

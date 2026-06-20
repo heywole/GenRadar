@@ -12,7 +12,7 @@ async function fetchLatestEvaluation() {
   try {
     // Step 1: get the single most recently created ai_score row (has fresh tx_hash)
     const scoresRes = await fetch(
-      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/ai_scores?select=project_id,score,risk,confidence,positives,risks,findings,breakdown,explanation,tx_hash,created_at&order=created_at.desc&limit=1`,
+      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/ai_scores?select=project_id,score,risk,confidence,positives,risks,findings,breakdown,explanation,tx_hash,scanner_signals,created_at&order=created_at.desc&limit=1`,
       {
         headers: {
           apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -27,7 +27,7 @@ async function fetchLatestEvaluation() {
 
     // Step 2: fetch that project's details
     const projRes = await fetch(
-      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/projects?select=id,name,description,website_url,category,logo_url,created_at&id=eq.${latestScore.project_id}&status=eq.active`,
+      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/projects?select=id,name,description,website_url,github_url,docs_url,twitter_url,telegram_url,discord_url,category,logo_url,created_at&id=eq.${latestScore.project_id}&status=eq.active`,
       {
         headers: {
           apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -64,18 +64,26 @@ function AIScanner() {
     const risk  = ai ? ai.risk : 'Low'
     const name  = p ? p.name.slice(0, 28) : 'project'
 
-    const hasGithub  = !!(p as any)?.github_url
-    const hasDocs    = !!(p as any)?.docs_url
-    const hasTwitter = !!(p as any)?.twitter_url
-    const hasTelegram = !!(p as any)?.telegram_url
-    const hasDiscord  = !!(p as any)?.discord_url
+    const signals = (ai as any)?.scanner_signals as Partial<{
+      phishing_detected: boolean; unsafe_wallet_behavior: boolean; suspicious_scripts: boolean;
+      has_github: boolean; has_docs: boolean; has_twitter: boolean; has_telegram: boolean; has_discord: boolean;
+    }> | null
 
     const positives = ai?.positives ?? []
     const risks     = ai?.risks ?? []
 
-    const phishing  = risks.some(r => r.toLowerCase().includes('phish'))
-    const scripts   = risks.some(r => r.toLowerCase().includes('script') || r.toLowerCase().includes('obfusc'))
-    const wallet    = risks.some(r => r.toLowerCase().includes('wallet'))
+    // Prefer the real, stored scanner signals from this exact evaluation.
+    // Only fall back to guessing from risk text / URL presence for older
+    // rows saved before signals were persisted.
+    const hasGithub   = signals ? !!signals.has_github   : !!(p as any)?.github_url
+    const hasDocs      = signals ? !!signals.has_docs      : !!(p as any)?.docs_url
+    const hasTwitter  = signals ? !!signals.has_twitter  : !!(p as any)?.twitter_url
+    const hasTelegram = signals ? !!signals.has_telegram : !!(p as any)?.telegram_url
+    const hasDiscord  = signals ? !!signals.has_discord  : !!(p as any)?.discord_url
+
+    const phishing = signals ? !!signals.phishing_detected      : risks.some(r => r.toLowerCase().includes('phish'))
+    const scripts  = signals ? !!signals.suspicious_scripts     : risks.some(r => r.toLowerCase().includes('script') || r.toLowerCase().includes('obfusc'))
+    const wallet   = signals ? !!signals.unsafe_wallet_behavior : risks.some(r => r.toLowerCase().includes('wallet'))
 
     const twitterStatus  = `Twitter: ${hasTwitter ? '✓' : '✗ [-3]'}  Telegram: ${hasTelegram ? '✓' : '✗ [-3]'}  Discord: ${hasDiscord ? '✓' : '✗ [-3]'}`
     const githubStatus   = hasGithub ? '> GitHub repository... FOUND ✓' : '> GitHub repository... NOT FOUND [-10]'
