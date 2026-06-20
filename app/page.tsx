@@ -85,21 +85,19 @@ function AIScanner() {
     const scripts  = signals ? !!signals.suspicious_scripts     : risks.some(r => r.toLowerCase().includes('script') || r.toLowerCase().includes('obfusc'))
     const wallet   = signals ? !!signals.unsafe_wallet_behavior : risks.some(r => r.toLowerCase().includes('wallet'))
 
-    const twitterStatus  = `Twitter: ${hasTwitter ? '✓' : '✗ [-3]'}  Telegram: ${hasTelegram ? '✓' : '✗ [-3]'}  Discord: ${hasDiscord ? '✓' : '✗ [-3]'}`
-    const githubStatus   = hasGithub ? '> GitHub repository... FOUND ✓' : '> GitHub repository... NOT FOUND [-10]'
-    const docsStatus     = hasDocs   ? '> Documentation... FOUND ✓'      : '> Documentation... NOT FOUND [-5]'
-
     return [
       { text: `$ genradar-eval --project "${name}"`,         color: 'var(--text-3)',  delay: 0 },
       { text: '> Connecting to GenLayer studionet...',        color: 'var(--text-2)', delay: 700 },
       { text: `> Scanning ${(p?.website_url ?? 'website').replace(/^https?:\/\//, '').slice(0, 36)}...`, color: 'var(--text-2)', delay: 1200 },
-      { text: `> Phishing check... ${phishing ? '⚠ DETECTED [-25]' : 'OK ✓'}`,  color: phishing  ? '#D97706' : '#22C55E', delay: 1900 },
-      { text: `> Wallet safety... ${wallet   ? '⚠ UNSAFE [-23]'   : 'OK ✓'}`,   color: wallet    ? '#D97706' : '#22C55E', delay: 2500 },
-      { text: `> Obfuscated scripts... ${scripts ? '⚠ FOUND [-15]' : 'OK ✓'}`,  color: scripts   ? '#D97706' : '#22C55E', delay: 3100 },
-      { text: githubStatus,  color: hasGithub ? '#22C55E' : '#D97706', delay: 3700 },
-      { text: docsStatus,    color: hasDocs   ? '#22C55E' : '#D97706', delay: 4200 },
-      { text: `> ${twitterStatus}`, color: (hasTwitter && hasTelegram && hasDiscord) ? '#22C55E' : '#D97706', delay: 4700 },
-      { text: '> Sending raw signals to GenLayer validators...', color: '#3B82F6',    delay: 5400 },
+      { text: `> Phishing check: ${phishing ? 'DETECTED' : 'OK'}`,             color: phishing  ? '#D97706' : '#22C55E', delay: 1900 },
+      { text: `> Wallet safety: ${wallet   ? 'UNSAFE'   : 'OK'}`,              color: wallet    ? '#D97706' : '#22C55E', delay: 2500 },
+      { text: `> Obfuscated scripts: ${scripts ? 'FOUND' : 'OK'}`,             color: scripts   ? '#D97706' : '#22C55E', delay: 3100 },
+      { text: `> GitHub: ${hasGithub ? 'FOUND' : 'NOT FOUND'}`,                color: hasGithub ? '#22C55E' : '#D97706', delay: 3700 },
+      { text: `> Documentation: ${hasDocs ? 'FOUND' : 'NOT FOUND'}`,           color: hasDocs   ? '#22C55E' : '#D97706', delay: 4100 },
+      { text: `> Twitter: ${hasTwitter ? 'FOUND' : 'NOT FOUND'}`,              color: hasTwitter ? '#22C55E' : '#D97706', delay: 4500 },
+      { text: `> Telegram: ${hasTelegram ? 'FOUND' : 'NOT FOUND'}`,            color: hasTelegram ? '#22C55E' : '#D97706', delay: 4900 },
+      { text: `> Discord: ${hasDiscord ? 'FOUND' : 'NOT FOUND'}`,              color: hasDiscord ? '#22C55E' : '#D97706', delay: 5300 },
+      { text: '> Sending raw signals to GenLayer validators...', color: '#3B82F6',    delay: 6000 },
       {
         text: realTxHash
           ? `TX: ${realTxHash.slice(0,10)}...${realTxHash.slice(-6)} → GenLayer Explorer ↗`
@@ -108,15 +106,15 @@ function AIScanner() {
         tx: realTxHash
           ? `https://explorer-studio.genlayer.com/tx/${realTxHash}`
           : 'https://explorer-studio.genlayer.com/txs',
-        delay: 6100,
+        delay: 6700,
       },
-      { text: `> Validator 1: score=${score}, risk=${risk} ✓`, color: '#22C55E', delay: 7000 },
-      { text: `> Validator 2: score=${score}, risk=${risk} ✓`, color: '#22C55E', delay: 7600 },
-      { text: `> Validator 3: score=${score}, risk=${risk} ✓`, color: '#22C55E', delay: 8200 },
-      { text: `> Validator 4: score=${score}, risk=${risk} ✓`, color: '#22C55E', delay: 8800 },
-      { text: `> Validator 5: score=${score}, risk=${risk} ✓`, color: '#22C55E', delay: 9400 },
-      { text: `> Consensus reached. Final score: ${score}/100  Risk: ${risk}`, color: '#22C55E', delay: 10100, bold: true },
-      { text: `✓ "${name}" evaluated on GenLayer network.`,                    color: '#22C55E', delay: 10800, bold: true },
+      { text: `> Validator 1: score=${score}, risk=${risk} ✓`, color: '#22C55E', delay: 7600 },
+      { text: `> Validator 2: score=${score}, risk=${risk} ✓`, color: '#22C55E', delay: 8200 },
+      { text: `> Validator 3: score=${score}, risk=${risk} ✓`, color: '#22C55E', delay: 8800 },
+      { text: `> Validator 4: score=${score}, risk=${risk} ✓`, color: '#22C55E', delay: 9400 },
+      { text: `> Validator 5: score=${score}, risk=${risk} ✓`, color: '#22C55E', delay: 10000 },
+      { text: `> Consensus reached. Final score: ${score}/100  Risk: ${risk}`, color: '#22C55E', delay: 10700, bold: true },
+      { text: `✓ "${name}" evaluated on GenLayer network.`,                    color: '#22C55E', delay: 11400, bold: true },
     ]
   }
 

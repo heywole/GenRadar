@@ -231,4 +231,4 @@ The application deploys to Vercel directly from its git repository. The schedule
 
 ## 13. Roadmap
 
-Planned improvements include a push based notification from GenLayer back to GenRadar when consensus is reached, removing the remaining dependence on polling, expansion of the scanner to cover additional on chain risk signals, and a public API allowing third parties to query a project's evaluation programmatically.
+Planned improvements include expansion of the scanner to cover additional on chain risk signals, a public API secured by issued API keys that allows third parties to query a project's evaluation programmatically, and Radar Insight, an aggregate view across every evaluated project that surfaces trends such as average scores by category, recurring risk patterns, and the overall health of the GenLayer ecosystem over time.
