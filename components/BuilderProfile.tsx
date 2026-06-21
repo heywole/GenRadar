@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  Twitter, Github, MessageCircle, Globe, ExternalLink,
+  X, Github, MessageCircle, Globe, ExternalLink,
   LayoutGrid, List, Shield, Eye, MessageSquare, Star,
   CheckCircle, Loader2, User
 } from 'lucide-react'
@@ -103,8 +103,8 @@ export function BuilderProfile({ builderId }: Props) {
 
         {/* Avatar */}
         <div style={{ width: 72, height: 72, borderRadius: '50%', overflow: 'hidden', background: 'var(--bg-secondary)', border: '2px solid var(--border-hi)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          {profile.avatar_url
-            ? <img src={profile.avatar_url} alt="builder" style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          {(profile.display_avatar_url || profile.avatar_url)
+            ? <img src={profile.display_avatar_url || profile.avatar_url} alt="builder" style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                 onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
             : <User size={28} color="var(--text-3)" />
           }
@@ -115,7 +115,7 @@ export function BuilderProfile({ builderId }: Props) {
           {/* Name + flag + verified badge */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
             <h3 style={{ fontWeight: 800, fontSize: 18, color: 'var(--text-1)', letterSpacing: '-0.02em', margin: 0 }}>
-              Builder
+              {profile.display_name || profile.name || 'Builder'}
             </h3>
 
             {/* Country flag — shown right after the name */}
@@ -151,7 +151,7 @@ export function BuilderProfile({ builderId }: Props) {
 
           {/* Social links */}
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            {profile.twitter_url  && <a href={profile.twitter_url}  target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-3)', textDecoration: 'none' }}><Twitter size={12} /> X/Twitter</a>}
+            {profile.twitter_url  && <a href={profile.twitter_url}  target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-3)', textDecoration: 'none' }}><X size={12} /> X</a>}
             {profile.github_url   && <a href={profile.github_url}   target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-3)', textDecoration: 'none' }}><Github size={12} /> GitHub</a>}
             {profile.telegram_url && <a href={profile.telegram_url} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-3)', textDecoration: 'none' }}><MessageCircle size={12} /> Telegram</a>}
             {profile.discord_url  && <a href={profile.discord_url}  target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-3)', textDecoration: 'none' }}><MessageCircle size={12} /> Discord</a>}

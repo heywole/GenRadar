@@ -8,9 +8,14 @@ export async function GET(req: NextRequest) {
   const user_id = searchParams.get('user_id')
   if (!user_id) return NextResponse.json({ error: 'Missing user_id' }, { status: 400 })
 
+  // Same client used by /api/builders, so the name shown here always
+  // matches the name shown on the builders list — previously this route
+  // returned the raw builder_profiles.name field with no fallback, while
+  // the list page resolved a real name from GitHub metadata, so the two
+  // pages disagreed whenever a builder never typed a name into the form.
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     { auth: { persistSession: false } }
   )
 
@@ -58,8 +63,31 @@ export async function GET(req: NextRequest) {
     _count: { views: 0, saves: 0, reports: 0 },
   }))
 
+  // Resolve a real display name and avatar the same way /api/builders does,
+  // without touching profile.name/profile.avatar_url directly — those stay
+  // exactly as stored, since the profile edit form on the profile page
+  // pre-fills its inputs from those two fields and shouldn't suddenly see
+  // a GitHub name in there that the builder never actually typed in.
+  let displayName = profile?.name || null
+  let displayAvatar = profile?.avatar_url || null
+  if (!displayName || !displayAvatar) {
+    const { data: authData } = await supabase.auth.admin.getUserById(user_id)
+    const authUser = authData?.user
+    displayName = displayName ||
+      authUser?.user_metadata?.full_name ||
+      authUser?.user_metadata?.name ||
+      authUser?.user_metadata?.user_name ||
+      authUser?.user_metadata?.preferred_username ||
+      authUser?.email?.split('@')[0] ||
+      'Builder'
+    displayAvatar = displayAvatar ||
+      authUser?.user_metadata?.avatar_url ||
+      authUser?.user_metadata?.picture ||
+      null
+  }
+
   return NextResponse.json({
-    profile,
+    profile: profile ? { ...profile, display_name: displayName, display_avatar_url: displayAvatar } : profile,
     projects: projectsWithScores,
     stats: { totalProjects: projectIds.length, totalViews, totalFeedback, avgScore },
     isVerified,
