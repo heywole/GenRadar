@@ -3,12 +3,16 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  X, Github, MessageCircle, Globe, ExternalLink,
+  Github, MessageCircle, Globe, ExternalLink,
   LayoutGrid, List, Shield, Eye, MessageSquare, Star,
   CheckCircle, Loader2, User
 } from 'lucide-react'
 import { ProjectCard } from '@/components/ProjectCard'
 import type { Project } from '@/types'
+
+// Same bold X glyph used on project cards, so the logo matches everywhere
+// on the site rather than using lucide's generic, thinner X mark.
+function XIcon() { return <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.737-8.835L1.254 2.25H8.08l4.253 5.622 5.91-5.622zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg> }
 
 interface BuilderStats {
   totalProjects:  number
@@ -151,7 +155,7 @@ export function BuilderProfile({ builderId }: Props) {
 
           {/* Social links */}
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            {profile.twitter_url  && <a href={profile.twitter_url}  target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-3)', textDecoration: 'none' }}><X size={12} /> X</a>}
+            {profile.twitter_url  && <a href={profile.twitter_url}  target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-3)', textDecoration: 'none' }}><XIcon /></a>}
             {profile.github_url   && <a href={profile.github_url}   target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-3)', textDecoration: 'none' }}><Github size={12} /> GitHub</a>}
             {profile.telegram_url && <a href={profile.telegram_url} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-3)', textDecoration: 'none' }}><MessageCircle size={12} /> Telegram</a>}
             {profile.discord_url  && <a href={profile.discord_url}  target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-3)', textDecoration: 'none' }}><MessageCircle size={12} /> Discord</a>}
