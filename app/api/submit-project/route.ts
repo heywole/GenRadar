@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { submitProjectSchema } from '@/lib/validation'
 import { checkRateLimit } from '@/lib/rateLimit'
-import { startEvaluation } from '@/lib/runEvaluation'
 
 export const maxDuration = 60
 export const dynamic = 'force-dynamic'
@@ -50,7 +49,7 @@ export async function POST(req: NextRequest) {
       logo_url:            p.logo_url          || null,
       created_by:          user.id,
       status:              'active',
-      evaluation_status:   'pending',
+      evaluation_status:   'processing',
       evaluation_attempts: 0,
     })
     .select().single()
@@ -60,26 +59,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to save project. Please try again.' }, { status: 500 })
   }
 
-  // Submit straight to GenLayer now, instead of waiting on a webhook/cron
-  // that might not be configured or might not fire in time. This call only
-  // does the scan + tx-send (a few seconds) — it does not wait for a score.
-  let evalMessage = 'Project submitted! AI evaluation starting...'
-  try {
-    const result = await startEvaluation(project.id)
-    if ('error' in result) {
-      console.error(`[submit] evaluation failed to start for ${project.id}: ${result.error}`)
-      evalMessage = 'Project submitted. AI evaluation could not be started automatically — an admin can trigger Re-evaluate.'
-    }
-  } catch (e: any) {
-    console.error(`[submit] evaluation threw for ${project.id}:`, e?.message || e)
-    evalMessage = 'Project submitted. AI evaluation could not be started automatically — an admin can trigger Re-evaluate.'
-  }
+  // Kick off evaluation in background — don't wait for it
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://genradar.xyz'
+  fetch(`${baseUrl}/api/run-evaluation`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project_id: project.id }),
+  }).catch(() => {})
 
-  console.log(`[submit] project created: ${project.id}`)
+  console.log(`[submit] project created: ${project.id} — evaluation started in background`)
   return NextResponse.json({
     success: true,
     project,
-    message: evalMessage,
+    message: 'Project submitted! AI evaluation is running.',
     remaining_submissions: remaining,
   }, { status: 201 })
 }

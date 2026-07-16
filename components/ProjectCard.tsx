@@ -81,14 +81,12 @@ export function ProjectCard({ project, showEditControls, onEdit, onDelete }: Pro
         const scoreRow = found.ai_score
         const score    = scoreRow && Number(scoreRow.score) > 0 ? scoreRow : null
 
-        // Status always wins over a possibly-stale score. Previously a
-        // leftover score from before a re-evaluation could make this think
-        // the (stale) result was final while GenLayer was still working —
-        // that's what caused the card to flicker between "evaluating" and
-        // an old score. Now: still processing/pending → always evaluating.
-        if (evStatus === 'processing' || evStatus === 'pending') {
+        // Only show "AI Evaluating" if processing/pending AND no existing score
+        // If score exists, keep showing it even during re-evaluation
+        if ((evStatus === 'processing' || evStatus === 'pending') && !score) {
           setEvaluating(true)
-        } else {
+        } else if (evStatus === 'completed' || (score && evStatus !== 'pending')) {
+          // Has score OR completed — show it
           setEvaluating(false)
           clearEvaluating(project.id)
         }
@@ -107,7 +105,11 @@ export function ProjectCard({ project, showEditControls, onEdit, onDelete }: Pro
 
   function startPolling() {
     if (timerRef.current) return // already polling
-    timerRef.current = setInterval(fetchData, 4000)
+    timerRef.current = setInterval(async () => {
+      await fetchData()
+      // Stop polling once evaluation_status = completed (fetchData handles that)
+      if (!evaluatingRef.current) stopPolling()
+    }, 4000)
   }
 
   function stopPolling() {
@@ -118,12 +120,12 @@ export function ProjectCard({ project, showEditControls, onEdit, onDelete }: Pro
   }
 
   useEffect(() => {
-    // Fetch immediately on mount, then keep polling forever while this
-    // card is on screen — never go fully idle. A re-evaluation can be
-    // triggered from a completely different page (the admin panel), so
-    // this card has no other way to learn about it except by continuing
-    // to check, even after it already has a settled score.
-    fetchData().then(() => startPolling())
+    // Fetch immediately on mount
+    fetchData().then(() => {
+      // fetchData sets evaluatingRef if DB shows processing/pending
+      // startPolling if already evaluating or no score yet
+      if (evaluatingRef.current || !liveScore) startPolling()
+    })
 
     // Listen for evaluation-started events (from re-evaluate button / admin bulk actions)
     function handleEvalStart(e: any) {

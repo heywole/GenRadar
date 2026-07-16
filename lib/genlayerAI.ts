@@ -1,14 +1,4 @@
-// lib/genlayerAI.ts
-//
-// IMPORTANT DESIGN RULE: GenLayer is the only source of a score.
-// submitEvaluation() sends the transaction and returns immediately
-// (it does NOT wait for validator consensus). pollEvaluation() does a
-// single fast check for a result. Neither function ever invents a score —
-// if GenLayer hasn't produced one, callers get `null` (poll) or a thrown
-// error (submit failure), never a fake number.
-
 import type { AIScore, SubmitProjectPayload } from '@/types'
-import { scanProject, type ScannerSignals } from './scanner'
 
 function clean(s: string, max: number) {
   return (s || '').replace(/[<>{}[\]]/g, '').trim().slice(0, max)
@@ -21,220 +11,199 @@ function sanitizeAddress(addr: string): `0x${string}` {
   return `0x${hex}` as `0x${string}`
 }
 
-// genlayer-js currently (v1.x) exports: localnet, studionet, testnetAsimov,
-// testnetBradbury. Older guides/scripts reference a plain "testnet" export
-// that no longer exists — that mismatch silently falls back to localnet
-// (127.0.0.1), which is why this needed fixing. GENLAYER_NETWORK in your
-// .env was already being set but the old code never read it.
-const NETWORK_ALIASES: Record<string, string> = {
-  studionet:          'studionet',
-  localnet:           'localnet',
-  testnet:            'testnetBradbury', // legacy alias some docs/scripts used
-  'testnet-asimov':   'testnetAsimov',
-  testnetasimov:      'testnetAsimov',
-  'testnet-bradbury': 'testnetBradbury',
-  testnetbradbury:    'testnetBradbury',
+async function sleep(ms: number) {
+  return new Promise(r => setTimeout(r, ms))
 }
 
-export function resolveNetworkKey(): string {
-  return (process.env.GENLAYER_NETWORK || 'studionet').trim().toLowerCase()
-}
-
-async function getChain() {
-  const chains = await import('genlayer-js/chains')
-  const key        = resolveNetworkKey()
-  const exportName = NETWORK_ALIASES[key]
-  const chain       = exportName ? (chains as any)[exportName] : undefined
-  if (!chain) {
-    throw new Error(
-      `Unknown GENLAYER_NETWORK "${process.env.GENLAYER_NETWORK}". ` +
-      `Valid values: studionet, testnet-asimov, testnet-bradbury, localnet.`
-    )
+// Run only security API checks — transparency is verified by GenLayer validators directly
+async function runSecurityScans(websiteUrl: string): Promise<Record<string, any>> {
+  const signals: Record<string, any> = {
+    goplus_flagged:        false,
+    safe_browsing_flagged: false,
+    scamsniffer_flagged:   false,
+    ssl_valid:             websiteUrl.startsWith('https://'),
+    website_unreachable:   false,
   }
-  return chain
-}
 
-async function getClient() {
-  const privateKeyRaw = process.env.GENLAYER_PRIVATE_KEY
-  if (!privateKeyRaw) throw new Error('GENLAYER_PRIVATE_KEY is not set.')
-  const privateKey = (privateKeyRaw.startsWith('0x') ? privateKeyRaw : `0x${privateKeyRaw}`) as `0x${string}`
+  const domain = websiteUrl.replace(/^https?:\/\//, '').split('/')[0]
 
-  const gljs  = await import('genlayer-js')
-  const chain = await getChain()
-  const { createClient, createAccount } = gljs
-  const account = createAccount(privateKey)
-  return createClient({ chain, account })
-}
-
-function getContractAddress(): `0x${string}` {
-  const raw = process.env.GENLAYER_CONTRACT_ADDRESS
-  if (!raw) throw new Error('GENLAYER_CONTRACT_ADDRESS is not set.')
-  return sanitizeAddress(raw)
-}
-
-type ProjectInput = SubmitProjectPayload & {
-  telegram_url?: string
-  twitter_url?:  string
-  discord_url?:  string
-  docs_url?:     string
-}
-
-async function buildSignalPayload(project: ProjectInput): Promise<{ payload: string; signals: ScannerSignals }> {
-  let signals: ScannerSignals
+  // GoPlus phishing check
   try {
-    signals = await scanProject(
-      project.website_url,
-      project.github_url,
-      project.docs_url,
-      project.twitter_url,
-      project.telegram_url,
-      project.discord_url,
+    const res = await fetch(
+      `https://api.gopluslabs.io/api/v1/phishing_site?url=${encodeURIComponent(websiteUrl)}`,
+      { signal: AbortSignal.timeout(8000) }
     )
-  } catch (e: any) {
-    console.warn('[Scanner] failed, using neutral defaults:', e?.message || e)
-    signals = {
-      phishing_detected: false, suspicious_scripts: false, wallet_present: false,
-      unsafe_wallet_behavior: false, hidden_redirects: false,
-      has_github:   !!project.github_url,
-      has_docs:     !!project.docs_url,
-      has_twitter:  !!project.twitter_url,
-      has_telegram: !!project.telegram_url,
-      has_discord:  !!project.discord_url,
-      recently_active: false, domain_age_days: null,
-      website_unreachable: true, website_html: '', github_summary: '',
-      goplus_flagged: false, safe_browsing_flagged: false, scamsniffer_flagged: false,
-      ssl_valid: project.website_url.startsWith('https://'),
-      redirect_chain_length: 0, external_script_count: 0,
-      has_honeypot_patterns: false,
-      security_score: 80,
-      transparency_score:
-        20 + (project.github_url ? 20 : 0) + (project.docs_url ? 20 : 0) +
-        (project.twitter_url ? 15 : 0) + (project.telegram_url ? 12 : 0) + (project.discord_url ? 13 : 0),
+    const d = await res.json()
+    if (d?.result?.phishing_site === '1' || Number(d?.result?.phishing_site) === 1) {
+      signals.goplus_flagged = true
     }
+  } catch {}
+
+  // Google Safe Browsing
+  const sbKey = process.env.GOOGLE_SAFE_BROWSING_KEY
+  if (sbKey) {
+    try {
+      const res = await fetch(
+        `https://safebrowsing.googleapis.com/v4/threatMatches:find?key=${sbKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            client: { clientId: 'genradar', clientVersion: '1.0' },
+            threatInfo: {
+              threatTypes:      ['MALWARE', 'SOCIAL_ENGINEERING', 'UNWANTED_SOFTWARE'],
+              platformTypes:    ['ANY_PLATFORM'],
+              threatEntryTypes: ['URL'],
+              threatEntries:    [{ url: websiteUrl }],
+            },
+          }),
+          signal: AbortSignal.timeout(8000),
+        }
+      )
+      const d = await res.json()
+      if (d?.matches?.length) signals.safe_browsing_flagged = true
+    } catch {}
   }
 
-  const payload = JSON.stringify({
-    website_unreachable:    signals.website_unreachable,
-    phishing_detected:      signals.phishing_detected,
-    suspicious_scripts:     signals.suspicious_scripts,
-    wallet_present:         signals.wallet_present,
-    unsafe_wallet_behavior: signals.unsafe_wallet_behavior,
-    hidden_redirects:       signals.hidden_redirects,
-    has_honeypot_patterns:  signals.has_honeypot_patterns ?? false,
-    recently_active:        signals.recently_active,
-    domain_age_days:        signals.domain_age_days,
-    github_summary:         (signals.github_summary || '').slice(0, 200),
-    website_preview:        (signals.website_html   || '').slice(0, 400),
-    goplus_flagged:         signals.goplus_flagged,
-    safe_browsing_flagged:  signals.safe_browsing_flagged,
-    scamsniffer_flagged:    signals.scamsniffer_flagged,
-    ssl_valid:              signals.ssl_valid,
-  })
+  // ScamSniffer blacklist
+  try {
+    const res = await fetch(
+      'https://raw.githubusercontent.com/scamsniffer/scam-database/main/blacklist/domains.json',
+      { signal: AbortSignal.timeout(8000) }
+    )
+    if (res.ok) {
+      const list: string[] = await res.json()
+      if (list.some(d => typeof d === 'string' && (d === domain || domain.endsWith('.' + d)))) {
+        signals.scamsniffer_flagged = true
+      }
+    }
+  } catch {}
 
-  return { payload, signals }
+  // Quick reachability check
+  try {
+    const res = await fetch(websiteUrl, {
+      method: 'HEAD',
+      signal: AbortSignal.timeout(8000),
+    })
+    signals.website_unreachable = !res.ok
+  } catch {
+    signals.website_unreachable = true
+  }
+
+  return signals
 }
 
-/**
- * Scans the project and submits the evaluate_project transaction.
- * Resolves in a few seconds (scanner has its own internal timeouts,
- * writeContract is just sending a tx) — it does NOT wait for validator
- * consensus. Call pollEvaluation() afterwards to check for a result.
- *
- * Throws on any real failure (bad config, tx rejected, etc) — callers
- * must NOT catch this and substitute a fake score.
- */
-export async function submitEvaluation(project: ProjectInput, projectId: string): Promise<{ txHash: string; signals: ScannerSignals }> {
-  const contractAddr = getContractAddress()
-  const client        = await getClient()
+export async function evaluateProject(
+  project: SubmitProjectPayload & {
+    telegram_url?: string
+    twitter_url?:  string
+    discord_url?:  string
+    docs_url?:     string
+  },
+  projectId: string
+): Promise<AIScore> {
+  const contractAddress = process.env.GENLAYER_CONTRACT_ADDRESS
+  const privateKeyRaw   = process.env.GENLAYER_PRIVATE_KEY
 
-  console.log(`[GenLayer] submitting project=${projectId} contract=${contractAddr} network=${resolveNetworkKey()}`)
+  if (!contractAddress || !privateKeyRaw) {
+    throw new Error('GENLAYER_CONTRACT_ADDRESS and GENLAYER_PRIVATE_KEY must be set.')
+  }
 
-  const { payload: signalPayload, signals } = await buildSignalPayload(project)
+  const privateKey   = (privateKeyRaw.startsWith('0x') ? privateKeyRaw : `0x${privateKeyRaw}`) as `0x${string}`
+  const contractAddr = sanitizeAddress(contractAddress)
 
+  console.log(`[GenLayer] Contract: ${contractAddr}`)
+  console.log(`[GenLayer] Evaluating: ${project.name} (${project.website_url})`)
+
+  // Step 1: Run security scans (API checks only — transparency verified by validators)
+  console.log('[Scanner] Running security API checks...')
+  const securitySignals = await runSecurityScans(project.website_url || '')
+  console.log(`[Scanner] Done. goplus=${securitySignals.goplus_flagged} safebrowsing=${securitySignals.safe_browsing_flagged} ssl=${securitySignals.ssl_valid}`)
+
+  // Step 2: Connect to GenLayer
+  const gljs   = await import('genlayer-js')
+  const chains = await import('genlayer-js/chains')
+  const { createClient: createGLClient, createAccount } = gljs
+  const { studionet } = chains
+
+  const account = createAccount(privateKey)
+  const client  = createGLClient({ chain: studionet, account })
+
+  // Step 3: Send to contract — URLs passed directly for validator verification
+  // Security signals (from our API checks) passed as extra context
+  let txHash: string
   try {
-    const txHash = await client.writeContract({
+    txHash = await client.writeContract({
       address:      contractAddr,
       functionName: 'evaluate_project',
       args: [
         projectId,
-        clean(project.name, 100),
-        clean(project.description, 800),
-        clean(project.website_url, 200),
+        clean(project.name,           100),
+        clean(project.description,    800),
+        clean(project.website_url,    200),
         clean(project.github_url   ?? '', 200),
         clean(project.twitter_url  ?? '', 200),
         clean(project.telegram_url ?? '', 200),
         clean(project.discord_url  ?? '', 200),
         clean(project.docs_url     ?? '', 200),
-        clean(project.category, 50),
-        clean(signalPayload, 2000),
+        clean(project.category,        50),
+        // Pass security signals only — transparency verified by validators themselves
+        JSON.stringify(securitySignals),
       ],
       value: BigInt(0),
     })
-    console.log(`[GenLayer] tx submitted for ${projectId}: ${txHash}`)
-    return { txHash: txHash as string, signals }
+    console.log(`[GenLayer] TX submitted: ${txHash}`)
   } catch (e: any) {
-    const message = e?.message || e?.shortMessage || 'unknown error'
-    console.error(`[GenLayer] writeContract failed for ${projectId}:`, message)
-    throw new Error(`GenLayer transaction failed: ${message}`)
-  }
-}
-
-/**
- * One fast read of get_evaluation. Returns:
- *   - an AIScore  if validators have reached consensus
- *   - null        if not ready yet (keep waiting — NOT an error)
- * Throws only on real configuration errors (bad address/network/key) so
- * the caller can tell "still waiting" apart from "this will never work".
- */
-export async function pollEvaluation(projectId: string): Promise<AIScore | null> {
-  const contractAddr = getContractAddress()
-  const client        = await getClient()
-
-  let raw: unknown
-  try {
-    raw = await client.readContract({
-      address:      contractAddr,
-      functionName: 'get_evaluation',
-      args:         [projectId],
-    })
-  } catch (e: any) {
-    // Transient RPC hiccup — don't fail the project over this, just retry later.
-    console.warn(`[GenLayer] readContract attempt failed for ${projectId}:`, e?.message || e)
-    return null
+    console.error('[GenLayer] TX failed:', e.message)
+    throw new Error(`GenLayer TX failed: ${e.message}`)
   }
 
-  if (!raw || raw === '{}' || raw === 'null' || String(raw).length <= 5) return null
+  // Step 4: Poll for consensus (up to 15 min)
+  console.log('[GenLayer] Waiting for validator consensus...')
+  for (let i = 0; i < 180; i++) {
+    await sleep(5000)
+    try {
+      const raw = await client.readContract({
+        address:      contractAddr,
+        functionName: 'get_evaluation',
+        args:         [projectId],
+      }) as string
 
-  let data: any
-  try {
-    data = typeof raw === 'string' ? JSON.parse(raw) : raw
-  } catch {
-    return null
+      if (raw && raw !== '{}' && raw !== 'null' && String(raw).length > 5) {
+        const data = typeof raw === 'string' ? JSON.parse(raw) : raw
+        console.log(`[GenLayer] ✓ Consensus on attempt ${i + 1}. score=${data.score}`)
+
+        const score      = Number(data.score ?? 0)
+        const secScore   = Number(data.security_score     ?? data.breakdown?.security     ?? 0)
+        const transScore = Number(data.transparency_score ?? data.breakdown?.transparency ?? 0)
+        const risk       = data.risk ?? (score >= 75 ? 'Low' : score >= 50 ? 'Medium' : 'High')
+
+        return {
+          score,
+          risk,
+          confidence:               data.confidence ?? 'Medium',
+          positives:                Array.isArray(data.positives) ? data.positives.slice(0, 6) : [],
+          risks:                    Array.isArray(data.risks)     ? data.risks.slice(0, 6)     : [],
+          findings:                 Array.isArray(data.findings)  ? data.findings.slice(0, 6)  : [],
+          explanation:              data.explanation              ?? '',
+          breakdown: {
+            security:     secScore,
+            transparency: transScore,
+            community:    0,
+            ...(data.breakdown ?? {}),
+          },
+          tx_hash: txHash,
+          ...(data.security_explanation     ? { security_explanation:     data.security_explanation     } : {}),
+          ...(data.transparency_explanation ? { transparency_explanation: data.transparency_explanation } : {}),
+        } as AIScore
+      }
+    } catch { /* keep polling */ }
+
+    if (i % 12 === 0 && i > 0) {
+      console.log(`[GenLayer] Still waiting... ${Math.round(i * 5 / 60)} min elapsed`)
+    }
   }
 
-  const score = Number(data.score ?? 0)
-  if (!score) return null // contract hasn't written a real result yet
-
-  const secScore   = Number(data.security_score     ?? data.breakdown?.security     ?? 0)
-  const transScore = Number(data.transparency_score ?? data.breakdown?.transparency ?? 0)
-  const risk        = data.risk ?? (score >= 75 ? 'Low' : score >= 50 ? 'Medium' : 'High')
-
-  return {
-    score,
-    risk,
-    confidence:  data.confidence ?? 'Medium',
-    positives:   Array.isArray(data.positives) ? data.positives.slice(0, 5) : [],
-    risks:       Array.isArray(data.risks)     ? data.risks.slice(0, 5)     : [],
-    findings:    Array.isArray(data.findings)  ? data.findings.slice(0, 5)  : [],
-    explanation: data.explanation ?? '',
-    breakdown: {
-      security: secScore,
-      transparency: transScore,
-      community: 0,
-      ...(data.breakdown ?? {}),
-    },
-    tx_hash: null, // the caller (lib/runEvaluation.ts) fills in the stored tx hash
-    ...(data.security_explanation     ? { security_explanation:     data.security_explanation }     : {}),
-    ...(data.transparency_explanation ? { transparency_explanation: data.transparency_explanation } : {}),
-  } as AIScore
+  // Timed out — this means GenLayer consensus took > 15 min (rare)
+  throw new Error('GenLayer consensus timed out after 15 minutes')
 }
