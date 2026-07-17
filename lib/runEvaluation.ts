@@ -144,15 +144,19 @@ export async function startEvaluation(project_id: string): Promise<{ tx_hash?: s
     console.log(`[startEvaluation] TX submitted: ${txHash}`)
 
     await supabase.from('projects').update({
-      evaluation_status:        'processing',
-      evaluation_tx_hash:       txHash,
+      evaluation_status:         'processing',
+      evaluation_error:          null,
+      evaluation_tx_hash:        txHash,
       evaluation_last_polled_at: new Date().toISOString(),
     }).eq('id', project_id)
 
     return { tx_hash: txHash }
   } catch (e: any) {
     console.error('[startEvaluation] failed:', e.message)
-    await supabase.from('projects').update({ evaluation_status: 'failed' }).eq('id', project_id)
+    await supabase.from('projects').update({
+      evaluation_status: 'failed',
+      evaluation_error:  clean(e.message || 'Unknown error', 500),
+    }).eq('id', project_id)
     return { error: e.message }
   }
 }
@@ -185,7 +189,8 @@ export async function checkEvaluation(project_id: string): Promise<{ ready: bool
     const transScore = Number(data.transparency_score ?? data.breakdown?.transparency ?? 0)
     const risk        = data.risk ?? (score >= 75 ? 'Low' : score >= 50 ? 'Medium' : 'High')
 
-    const { data: project } = await supabase.from('projects').select('evaluation_tx_hash').eq('id', project_id).single()
+    const { data: proj } = await supabase.from('projects').select('evaluation_tx_hash').eq('id', project_id).single()
+    const txHash: string | null = proj?.evaluation_tx_hash ?? null
 
     await supabase.from('ai_scores').delete().eq('project_id', project_id)
     await supabase.from('ai_scores').insert({
@@ -202,11 +207,14 @@ export async function checkEvaluation(project_id: string): Promise<{ ready: bool
       explanation:              data.explanation              ?? null,
       security_explanation:     data.security_explanation     ?? null,
       transparency_explanation: data.transparency_explanation ?? null,
-      tx_hash:                  project?.evaluation_tx_hash   ?? null,
+      tx_hash:                  txHash,
       created_at:               new Date().toISOString(),
     })
 
-    await supabase.from('projects').update({ evaluation_status: 'completed' }).eq('id', project_id)
+    await supabase.from('projects').update({
+      evaluation_status: 'completed',
+      evaluation_error:  null,
+    }).eq('id', project_id)
 
     console.log(`[checkEvaluation] ✓ ${project_id} score=${score}`)
     return { ready: true }
