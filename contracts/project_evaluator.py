@@ -1,14 +1,17 @@
-# v1.0.0 — Validators verify sources independently, results locked after first evaluation
+# v1.1.0 — Validators verify sources independently. Public overwrite is blocked;
+# only the contract owner (the platform backend account) can trigger a re-evaluation.
 # { "Depends": "py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6" }
 from genlayer import *
 import json
 
 
 class ProjectEvaluator(gl.Contract):
-    results:  TreeMap[str, str]   # project_id -> JSON result (presence = locked)
+    results:  TreeMap[str, str]   # project_id -> JSON result
+    owner:    Address              # platform backend account — the only one allowed to overwrite
 
     def __init__(self) -> None:
         self.results = TreeMap()
+        self.owner   = gl.message.sender_address
 
     @gl.public.write
     def evaluate_project(
@@ -26,10 +29,14 @@ class ProjectEvaluator(gl.Contract):
     ) -> None:
 
         # ── Lock protection ───────────────────────────────────────────────────
-        # Once a project has a finalized evaluation, it cannot be overwritten.
-        # Presence in self.results IS the lock — no separate lock map needed.
-        if project_id in self.results:
-            return  # silently ignore re-evaluation attempts
+        # Once a project has a finalized evaluation, the public cannot overwrite it.
+        # Only the platform's own backend account (self.owner, set at deploy time)
+        # is allowed to trigger a genuine re-evaluation — e.g. after fixing scanner
+        # data or updating submitted links. Anyone else calling this on an already
+        # evaluated project_id is silently ignored, preventing score manipulation.
+        is_owner = gl.message.sender_address == self.owner
+        if project_id in self.results and not is_owner:
+            return  # silently ignore — public cannot overwrite a finalized evaluation
 
         # ── Each validator independently fetches and verifies URLs ────────────
         # This is the key fix: validators do their own checks, not trusting caller
@@ -325,3 +332,7 @@ Choose the response most accurately reflecting what was actually verified."""
     @gl.public.view
     def is_locked(self, project_id: str) -> bool:
         return project_id in self.results
+
+    @gl.public.view
+    def get_owner(self) -> str:
+        return str(self.owner)
