@@ -1,17 +1,17 @@
+# { "Depends": "py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6" }
 # v1.1.0 — Validators verify sources independently. Public overwrite is blocked;
 # only the contract owner (the platform backend account) can trigger a re-evaluation.
-# { "Depends": "py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6" }
 from genlayer import *
 import json
 
 
 class ProjectEvaluator(gl.Contract):
     results:  TreeMap[str, str]   # project_id -> JSON result
-    owner:    Address              # platform backend account — the only one allowed to overwrite
+    owner:    str                  # platform backend account (as string) — only one allowed to overwrite
 
     def __init__(self) -> None:
         self.results = TreeMap()
-        self.owner   = gl.message.sender_address
+        self.owner   = str(gl.message.sender_address)
 
     @gl.public.write
     def evaluate_project(
@@ -34,7 +34,7 @@ class ProjectEvaluator(gl.Contract):
         # is allowed to trigger a genuine re-evaluation — e.g. after fixing scanner
         # data or updating submitted links. Anyone else calling this on an already
         # evaluated project_id is silently ignored, preventing score manipulation.
-        is_owner = gl.message.sender_address == self.owner
+        is_owner = str(gl.message.sender_address) == self.owner
         if project_id in self.results and not is_owner:
             return  # silently ignore — public cannot overwrite a finalized evaluation
 
@@ -335,4 +335,4 @@ Choose the response most accurately reflecting what was actually verified."""
 
     @gl.public.view
     def get_owner(self) -> str:
-        return str(self.owner)
+        return self.owner
